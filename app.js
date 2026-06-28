@@ -1761,9 +1761,7 @@ function renderActivePanel() {
 
 function renderLeaguePanel() {
   const scoutTeam = teams.find((team) => team.id === (state.scoutTeamId || state.selectedTeamId)) || getTeam();
-  let roster = sortRoster(state.rosters[scoutTeam.id] || []);
-  if (state.statView === "hitter") roster = roster.filter((p) => p.pos !== "投");
-  else roster = roster.filter((p) => p.pos === "投");
+  const roster = sortRoster(state.rosters[scoutTeam.id] || []);
   return `
     <section class="panel">
       <div class="panel-header">
@@ -1809,9 +1807,7 @@ function renderLeaguePanel() {
                 <th>体格</th>
                 ${sortHeader("総合", "overall")}
                 ${sortHeader("年俸", "salary")}
-                ${state.statView === "hitter"
-                  ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}`
-                  : `${sortHeader("登板", "games")}${sortHeader("防御率", "avg")}${sortHeader("勝利", "hr")}${sortHeader("奪三振", "rbi")}`}
+                ${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}
               </tr>
             </thead>
             <tbody>
@@ -1823,9 +1819,9 @@ function renderLeaguePanel() {
                   <td>${player.height}cm / ${player.weight}kg</td>
                   <td><strong>${overall(player)}</strong></td>
                   <td>${money(player.salary)}</td>
-                  ${state.statView === "hitter"
-                    ? `<td>${player.stats?.games || 0}</td><td>${formatRate(player.stats?.average)}</td><td>${player.stats?.homers || 0}</td><td>${player.stats?.rbi || 0}</td>`
-                    : `<td>${player.stats?.games || 0}</td><td>${player.stats?.era?.toFixed(2) || "-"}</td><td>${player.stats?.wins || 0}</td><td>${player.stats?.strikeouts || 0}</td>`}
+                  ${player.pos === "投"
+                    ? `<td>${player.stats?.games || 0}</td><td>${player.stats?.era?.toFixed(2) || "-"}</td><td>${player.stats?.wins || 0}</td><td>${player.stats?.strikeouts || 0}</td>`
+                    : `<td>${player.stats?.games || 0}</td><td>${formatRate(player.stats?.average)}</td><td>${player.stats?.homers || 0}</td><td>${player.stats?.rbi || 0}</td>`}
                 </tr>
               `).join("")}
             </tbody>
@@ -1838,29 +1834,18 @@ function renderLeaguePanel() {
 
 function renderRosterPanel(title, tradeMode) {
   let roster = state.positionFilter === "全" ? myRoster() : myRoster().filter((player) => player.pos === state.positionFilter);
-  const isHitter = state.statView === "hitter";
-  if (isHitter) roster = roster.filter((p) => p.pos !== "投");
-  else roster = roster.filter((p) => p.pos === "投");
   roster = sortRoster(roster);
   const locked = state.phase !== "offseason";
 
-  const statHeaders = isHitter
-    ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}`
-    : `${sortHeader("登板", "games")}${sortHeader("防御率", "avg")}${sortHeader("勝利", "hr")}${sortHeader("奪三振", "rbi")}`;
+  function statHeaders() {
+    return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
+  }
 
   function renderStatCells(p) {
-    if (isHitter) {
-      return `
-        <td>${p.stats?.games || 0}</td>
-        <td>${formatRate(p.stats?.average)}</td>
-        <td>${p.stats?.homers || 0}</td>
-        <td>${p.stats?.rbi || 0}</td>`;
+    if (p.pos === "投") {
+      return `<td>${p.stats?.games || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td><td>${p.stats?.wins || 0}</td><td>${p.stats?.strikeouts || 0}</td>`;
     }
-    return `
-      <td>${p.stats?.games || 0}</td>
-      <td>${p.stats?.era?.toFixed(2) || "-"}</td>
-      <td>${p.stats?.wins || 0}</td>
-      <td>${p.stats?.strikeouts || 0}</td>`;
+    return `<td>${p.stats?.games || 0}</td><td>${formatRate(p.stats?.average)}</td><td>${p.stats?.homers || 0}</td><td>${p.stats?.rbi || 0}</td>`;
   }
 
   return `
@@ -1889,7 +1874,7 @@ function renderRosterPanel(title, tradeMode) {
                 ${sortHeader("総合", "overall")}
                 ${sortHeader("年俸", "salary")}
                 ${sortHeader("契約", "years")}
-                ${statHeaders}
+                ${statHeaders()}
                 <th>操作</th>
               </tr>
             </thead>
@@ -2281,15 +2266,15 @@ function renderRecordsPanel() {
   else allPls = allPls.filter((p) => p.pos === "投");
   allPls = sortRoster(allPls);
 
-  const statHeaders = isHitter
-    ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}`
-    : `${sortHeader("登板", "games")}${sortHeader("防御率", "avg")}${sortHeader("勝利", "hr")}${sortHeader("奪三振", "rbi")}`;
+  function statHeaders() {
+    return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
+  }
 
   function statCells(p) {
-    if (isHitter) {
-      return `<td>${p.stats?.games || 0}</td><td>${formatRate(p.stats?.average)}</td><td>${p.stats?.homers || 0}</td><td>${p.stats?.rbi || 0}</td>`;
+    if (p.pos === "投") {
+      return `<td>${p.stats?.games || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td><td>${p.stats?.wins || 0}</td><td>${p.stats?.strikeouts || 0}</td>`;
     }
-    return `<td>${p.stats?.games || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td><td>${p.stats?.wins || 0}</td><td>${p.stats?.strikeouts || 0}</td>`;
+    return `<td>${p.stats?.games || 0}</td><td>${formatRate(p.stats?.average)}</td><td>${p.stats?.homers || 0}</td><td>${p.stats?.rbi || 0}</td>`;
   }
 
   return `
@@ -2316,7 +2301,7 @@ function renderRecordsPanel() {
                 ${sortHeader("年齢", "age")}
                 ${sortHeader("総合", "overall")}
                 ${sortHeader("年俸", "salary")}
-                ${statHeaders}
+                ${statHeaders()}
               </tr>
             </thead>
             <tbody>
