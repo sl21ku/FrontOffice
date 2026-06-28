@@ -685,23 +685,26 @@ function calculateFARank(player, teamId) {
 
 function generateFAMarket() {
   const faPlayers = [];
+  let totalDeclared = 0;
+  const MAX_FA = 14;
   teams.forEach((team) => {
     const roster = state.rosters[team.id] || [];
     roster.forEach((player) => {
-      if (!player.faEligible || player.faExercised) return;
+      if (!player.faEligible || player.faExercised || totalDeclared >= MAX_FA) return;
       const isMyTeam = team.id === state.selectedTeamId;
       const fairSal = player.fairSalary || fairMarketValue(player);
       const underpayRatio = fairSal > 0 ? player.salary / fairSal : 1;
-      const underpayBonus = underpayRatio < 0.7 ? Math.round((0.7 - underpayRatio) * 60) : 0;
+      const underpayBonus = underpayRatio < 0.7 ? Math.round((0.7 - underpayRatio) * 40) : 0;
       const exerciseChance = clamp(
-        15 + (player.age >= 30 ? 10 : 0) + (overall(player) >= 70 ? 15 : 0) - (player.salary > 3 ? 10 : 0) + underpayBonus,
-        5,
-        75
+        4 + (player.age >= 30 ? 6 : 0) + (overall(player) >= 70 ? 8 : 0) - (player.salary > 2.5 ? 6 : 0) + underpayBonus,
+        2,
+        40
       );
-      const decChance = clamp((player.years === 0 ? 50 : 10) * (overall(player) / 70) + underpayBonus * 0.5, 5, 80);
+      const decChance = clamp((player.years === 0 ? 25 : 4) * (overall(player) / 80) + underpayBonus * 0.4, 2, 45);
       const willDeclare = rand(1, 100) <= (isMyTeam ? decChance : exerciseChance);
 
       if (willDeclare) {
+        totalDeclared++;
         player.faExercised = true;
         const rank = calculateFARank(player, team.id);
         const demandSal = clamp(player.salary * (1.1 + rand(0, 3) / 10), 0.15, 8.0);
@@ -2712,6 +2715,20 @@ function renderDraftBoard() {
               </table>
             </div>
             <button class="primary-button" data-run-draft-lottery>抽選を開始する</button>
+          ` : board.phase === "repick" ? `
+            <h3 style="margin:0 0 10px;color:var(--red);">抽選失敗！ 外れ${board.userLostInfo?.lostCount || 1}位</h3>
+            <p class="panel-sub" style="margin-bottom:14px;">残り選手から再指名してください。</p>
+            <div style="max-height:350px;overflow-y:auto;margin-bottom:14px;">
+              ${[...state.draftPool].sort((a, b) => overall(b) - overall(a)).map((p) => {
+                const profile = p.draftProfile || {};
+                return `
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:8px;margin-bottom:4px;border:1px solid var(--line);border-radius:6px;background:white;">
+                    <span><strong>${p.name}</strong> (${p.pos} / ${profile.originType || ''} / ${profile.school || ''} / ${profile.scoutGrade || ''}) 総合${overall(p)}</span>
+                    <button class="small-button" onclick="rePickDraftCandidate('${p.id}')">再指名する</button>
+                  </div>
+                `;
+              }).join("")}
+            </div>
           ` : board.phase === "result" ? `
             <h3 style="margin:0 0 10px;">抽選結果</h3>
             <div style="max-height:350px;overflow-y:auto;margin-bottom:14px;">
@@ -2723,7 +2740,7 @@ function renderDraftBoard() {
                 </div>
               `).join("")}
             </div>
-            <button class="primary-button" data-close-draft-board>閉じる (2巡目へ)</button>
+            <button class="primary-button" onclick="closeDraftBoard()">閉じる (2巡目へ)</button>
           ` : ""}
         </div>
       </section>
@@ -2747,10 +2764,10 @@ function runDraftLottery() {
 
   const results = [];
   const assignedPlayers = new Set();
+  const userPickResult = { lost: false, lostCount: 0 };
 
   Object.entries(allPicks).forEach(([pid, entry]) => {
     if (entry.teams.length === 1) {
-      // No conflict - assign directly
       const winner = entry.teams[0];
       const player = state.draftPool.find((p) => p.id === pid);
       if (player && !assignedPlayers.has(pid)) {
@@ -2762,7 +2779,6 @@ function runDraftLottery() {
         results.push({ playerName: entry.playerName, playerPos: entry.playerPos, winnerName: winner.teamName, losers: [] });
       }
     } else {
-      // Conflict - lottery
       const winnerIdx = rand(0, entry.teams.length - 1);
       const winner = entry.teams[winnerIdx];
       const losers = entry.teams.filter((_, i) => i !== winnerIdx);
@@ -2774,19 +2790,75 @@ function runDraftLottery() {
         state.rosters[winner.teamId].push(player);
         state.draftResults.push({ round: 1, teamId: winner.teamId, player });
         results.push({ playerName: entry.playerName, playerPos: entry.playerPos, winnerName: winner.teamName, losers });
+        // Check if user lost this lottery
+        if (winner.teamId !== state.selectedTeamId && losers.some((l) => l.teamId === state.selectedTeamId)) {
+          userPickResult.lost = true;
+          userPickResult.lostCount = losers.findIndex((l) => l.teamId === state.selectedTeamId) + 1;
+        }
       }
     }
   });
 
-  // Losers auto-pick from remaining pool (simplified)
-  const losingTeams = [];
-  Object.entries(allPicks).forEach(([, entry]) => {
-    if (entry.teams.length > 1) {
-      const winnerIdx = rand(0, entry.teams.length - 1);
-      entry.teams.forEach((t, i) => { if (i !== winnerIdx) losingTeams.push(t); });
-    }
-  });
+  // Handle non-conflicted losers (if user's pick was auto-assigned but they didn't actually "win" it because another team already claimed it)
+  // Actually, non-conflicted picks always go to the only team - so they always win.
 
+  if (userPickResult.lost) {
+    // User lost - enter re-pick phase
+    board.phase = "repick";
+    board.lotteryResults = results;
+    board.userLostInfo = userPickResult;
+    persist();
+    render();
+  } else {
+    // User won or no conflict - assign other losers and proceed
+    const myWon = results.find((r) => r.winnerName === getTeam().name);
+    if (myWon) {
+      state.news.unshift(`ドラフト1巡目: ${myWon.playerName}の交渉権を獲得！`);
+    }
+
+    // Auto-assign other losing teams
+    const losingTeams = [];
+    results.forEach((r) => {
+      r.losers.forEach((l) => losingTeams.push(l));
+    });
+    losingTeams.forEach((t) => {
+      if (t.teamId === state.selectedTeamId) return;
+      const candidates = [...state.draftPool].sort((a, b) => overall(b) - overall(a));
+      if (candidates.length > 0) {
+        const chosen = candidates[rand(0, Math.min(2, candidates.length - 1))];
+        if (chosen) {
+          state.draftPool = state.draftPool.filter((p) => p.id !== chosen.id);
+          chosen.teamId = t.teamId;
+          state.rosters[t.teamId].push(chosen);
+          state.draftResults.push({ round: 1, teamId: t.teamId, player: chosen });
+        }
+      }
+    });
+
+    board.phase = "result";
+    board.lotteryResults = results;
+    persist();
+    render();
+  }
+}
+
+function rePickDraftCandidate(playerId) {
+  const board = state.draftNominationBoard;
+  if (!board || board.phase !== "repick") return;
+  const player = state.draftPool.find((p) => p.id === playerId);
+  if (!player) return;
+
+  state.draftPool = state.draftPool.filter((p) => p.id !== playerId);
+  player.teamId = state.selectedTeamId;
+  state.rosters[state.selectedTeamId].push(player);
+  state.draftResults.push({ round: 1, teamId: state.selectedTeamId, player });
+  state.news.unshift(`ドラフト1巡目: 抽選外れ → ${player.name}を再指名で獲得`);
+
+  // Auto-assign other losing teams  
+  const losingTeams = [];
+  board.lotteryResults.forEach((r) => {
+    r.losers.forEach((l) => { if (l.teamId !== state.selectedTeamId) losingTeams.push(l); });
+  });
   losingTeams.forEach((t) => {
     const candidates = [...state.draftPool].sort((a, b) => overall(b) - overall(a));
     if (candidates.length > 0) {
@@ -2800,18 +2872,14 @@ function runDraftLottery() {
     }
   });
 
-  // Check if user's pick was won or lost
-  const myWon = results.find((r) => r.playerName === board.myPick.playerName && r.winnerName === getTeam().name);
-  const myLost = results.find((r) => r.playerName === board.myPick.playerName && r.winnerName !== getTeam().name);
-
-  if (myWon) {
-    state.news.unshift(`ドラフト1巡目: ${myWon.playerName}の交渉権を獲得しました！`);
-  } else if (myLost) {
-    state.news.unshift(`ドラフト1巡目: ${myLost.playerName}は抽選で外れました。再指名で他選手を獲得。`);
-  }
-
   board.phase = "result";
-  board.lotteryResults = results;
+  persist();
+  render();
+}
+
+function closeDraftBoard() {
+  state.draftNominationBoard = null;
+  state.draftRound = 2;
   persist();
   render();
 }
