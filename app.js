@@ -1332,12 +1332,12 @@ function sortRoster(roster) {
         vb = b.stats?.kind === "pitcher" ? -(b.stats?.era || 99) : (b.stats?.average || 0);
         break;
       case "hr":
-        va = a.stats?.kind === "pitcher" ? (a.stats?.wins || 0) : (a.stats?.homers || 0);
-        vb = b.stats?.kind === "pitcher" ? (b.stats?.wins || 0) : (b.stats?.homers || 0);
+        va = a.pos === "投" ? (a.stats?.wins || 0) : (a.stats?.homers || 0);
+        vb = b.pos === "投" ? (b.stats?.wins || 0) : (b.stats?.homers || 0);
         break;
       case "rbi":
-        va = a.stats?.kind === "pitcher" ? (a.stats?.strikeouts || 0) : (a.stats?.rbi || 0);
-        vb = b.stats?.kind === "pitcher" ? (b.stats?.strikeouts || 0) : (b.stats?.rbi || 0);
+        va = a.pos === "投" ? (a.stats?.strikeouts || 0) : (a.stats?.rbi || 0);
+        vb = b.pos === "投" ? (b.stats?.strikeouts || 0) : (b.stats?.rbi || 0);
         break;
       case "games": va = a.stats?.games || 0; vb = b.stats?.games || 0; break;
       default: va = overall(a); vb = overall(b);
@@ -1761,7 +1761,9 @@ function renderActivePanel() {
 
 function renderLeaguePanel() {
   const scoutTeam = teams.find((team) => team.id === (state.scoutTeamId || state.selectedTeamId)) || getTeam();
-  const roster = sortRoster(state.rosters[scoutTeam.id] || []);
+  let roster = sortRoster(state.rosters[scoutTeam.id] || []);
+  if (state.statView === "hitter") roster = roster.filter((p) => p.pos !== "投");
+  else roster = roster.filter((p) => p.pos === "投");
   return `
     <section class="panel">
       <div class="panel-header">
@@ -1836,9 +1838,11 @@ function renderLeaguePanel() {
 
 function renderRosterPanel(title, tradeMode) {
   let roster = state.positionFilter === "全" ? myRoster() : myRoster().filter((player) => player.pos === state.positionFilter);
+  const isHitter = state.statView === "hitter";
+  if (isHitter) roster = roster.filter((p) => p.pos !== "投");
+  else roster = roster.filter((p) => p.pos === "投");
   roster = sortRoster(roster);
   const locked = state.phase !== "offseason";
-  const isHitter = state.statView === "hitter";
 
   const statHeaders = isHitter
     ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}`
@@ -2271,8 +2275,11 @@ function renderPlayerButton(player) {
 }
 
 function renderRecordsPanel() {
-  const allPls = sortRoster(allPlayers().filter((p) => p.teamId !== "DRAFT" && p.teamId !== "FA"));
+  let allPls = allPlayers().filter((p) => p.teamId !== "DRAFT" && p.teamId !== "FA");
   const isHitter = state.statView === "hitter";
+  if (isHitter) allPls = allPls.filter((p) => p.pos !== "投");
+  else allPls = allPls.filter((p) => p.pos === "投");
+  allPls = sortRoster(allPls);
 
   const statHeaders = isHitter
     ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}`
