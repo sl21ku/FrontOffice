@@ -1840,6 +1840,7 @@ function renderRosterPanel(title, tradeMode) {
   let roster = state.positionFilter === "全" ? myRoster() : myRoster().filter((player) => player.pos === state.positionFilter);
   roster = sortRoster(roster);
   const locked = state.phase !== "offseason";
+  const isHitter = state.statView === "hitter";
 
   function statHeaders() {
     return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
