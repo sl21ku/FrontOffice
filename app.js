@@ -1526,6 +1526,22 @@ function simulateSeason() {
       const posRank = posRanks[player.id] ?? 0;
       ageAndUpdatePlayer(player, teamBoost, team.id, posRank);
     });
+
+    // Normalize position games: total per position capped at ~155
+    const fielders = roster.filter((p) => p.pos !== "投");
+    const byPosAfter = {};
+    fielders.forEach((p) => { if (!byPosAfter[p.pos]) byPosAfter[p.pos] = []; byPosAfter[p.pos].push(p); });
+    Object.values(byPosAfter).forEach((group) => {
+      const totalG = group.reduce((s, p) => s + (p.stats?.games || 0), 0);
+      if (totalG > 155) {
+        const scale = 155 / totalG;
+        group.forEach((p) => {
+          if (p.stats && p.stats.games) {
+            p.stats.games = Math.max(3, Math.round(p.stats.games * scale));
+          }
+        });
+      }
+    });
   });
 
   const roster = myRoster();
