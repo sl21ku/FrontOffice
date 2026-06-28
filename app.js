@@ -82,6 +82,7 @@ const state = {
   draftOrder: [],          // team IDs in draft order for current round
   draftResults: [],        // list of { round, teamId, player }
   statView: "hitter",      // "hitter" or "pitcher" - determines which stat columns to show
+  leagueEra: "normal",     // "pitcher" | "normal" | "hitter" - league-wide balance
   faNegotiation: null,     // null or { playerId, type: "retain"|"sign" }
   postingRequests: [],     // players requesting posting
   draftNominationBoard: null, // null or { myPick, cpuNominations, phase: "board"|"lottery"|"result" }
@@ -147,7 +148,8 @@ function createPlayer(teamId, index, bias = 0, rookie = false, forcePos = null) 
   const pos = forcePos || (index % 5 === 0 ? "投" : pick(POSITIONS.slice(1)));
   const age = rookie ? rand(18, 23) : rand(20, 38);
   const peak = age < 25 ? 5 : age > 33 ? -7 : 0;
-  const base = clamp(rand(44, 82) + bias + peak, 35, 96);
+  const eraBias = state.leagueEra === "pitcher" ? (pos === "投" ? 4 : -3) : state.leagueEra === "hitter" ? (pos === "投" ? -3 : 4) : 0;
+  const base = clamp(rand(44, 82) + bias + peak + eraBias, 35, 96);
   const potential = clamp(base + rand(-4, 18) + (rookie ? 8 : 0), 40, 99);
   const body = bodyProfile(pos);
 
@@ -588,6 +590,7 @@ function loadSavedState() {
       draftOrder: saved.draftOrder || [],
       draftResults: saved.draftResults || [],
       statView: saved.statView || "hitter",
+      leagueEra: saved.leagueEra || "normal",
       faNegotiation: null,
       postingRequests: saved.postingRequests || [],
       draftNominationBoard: null,
@@ -1097,7 +1100,8 @@ function createDraftCandidate(index, bias) {
   const pos = index % 4 === 0 ? "投" : pick(POSITIONS.slice(1));
   
   const originBonus = originType === "高卒" ? rand(-8, 2) : originType === "大卒" ? rand(-3, 5) : rand(2, 10);
-  const base = clamp(rand(40, 78) + bias + originBonus, 30, 92);
+  const eraBias = state.leagueEra === "pitcher" ? (pos === "投" ? 4 : -3) : state.leagueEra === "hitter" ? (pos === "投" ? -3 : 4) : 0;
+  const base = clamp(rand(40, 78) + bias + originBonus + eraBias, 30, 92);
   const potential = originType === "高卒" 
     ? clamp(base + rand(8, 25), 50, 99)
     : originType === "大卒" 
@@ -1615,6 +1619,14 @@ function renderTeamSelect() {
           <div class="select-actions">
             <button class="primary-button" data-continue ${hasSave ? "" : "disabled"}>続きから</button>
             <button class="ghost-button" data-reset-save ${hasSave ? "" : "disabled"}>保存を消す</button>
+          </div>
+          <div class="era-select" style="margin-top:16px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:13px; color:var(--muted);">リーグ環境:</span>
+            <select data-era style="padding:6px 10px; border:1px solid var(--line); border-radius:6px; font:inherit; background:white;">
+              <option value="pitcher" ${state.leagueEra === "pitcher" ? "selected" : ""}>投高打低</option>
+              <option value="normal" ${state.leagueEra === "normal" ? "selected" : ""}>標準</option>
+              <option value="hitter" ${state.leagueEra === "hitter" ? "selected" : ""}>打高投低</option>
+            </select>
           </div>
         </section>
         <section class="team-grid">
@@ -2964,6 +2976,10 @@ function bindEvents() {
   });
   document.querySelector("[data-reset-save]")?.addEventListener("click", () => {
     if (confirm("保存データを削除します。よろしいですか？")) clearSave();
+  });
+  document.querySelector("[data-era]")?.addEventListener("change", (event) => {
+    state.leagueEra = event.target.value;
+    render();
   });
   document.querySelectorAll("[data-team]").forEach((button) => {
     button.addEventListener("click", () => initGame(button.dataset.team));
