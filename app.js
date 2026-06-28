@@ -1570,9 +1570,13 @@ function advanceToNextYear() {
 }
 
 function render() {
+  try {
   const app = document.querySelector("#app");
   app.innerHTML = `${state.mode === "select" ? renderTeamSelect() : renderGame()}${state.detailPlayerId ? renderPlayerDetail() : ""}${state.protectPhase ? renderProtectModal() : ""}${state.faNegotiation ? renderFANegotiationModal() : ""}${state.draftNominationBoard ? renderDraftBoard() : ""}`;
   bindEvents();
+  } catch(e) {
+    document.querySelector("#app").innerHTML = `<div style="padding:40px;color:red;"><h2>エラー</h2><pre>${e.message}\n${e.stack}</pre></div>`;
+  }
 }
 
 function renderTeamSelect() {
