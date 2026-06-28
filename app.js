@@ -3165,4 +3165,8 @@ function bindEvents() {
   });
 }
 
-render();
+try {
+  render();
+} catch(e) {
+  document.querySelector("#app").innerHTML = '<div style="padding:40px;color:red;"><h2>起動エラー</h2><pre>' + e.message + '</pre></div>';
+}
