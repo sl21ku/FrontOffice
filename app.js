@@ -2261,10 +2261,8 @@ function renderPlayerButton(player) {
 
 function renderRecordsPanel() {
   let allPls = allPlayers().filter((p) => p.teamId !== "DRAFT" && p.teamId !== "FA");
-  const isHitter = state.statView === "hitter";
-  if (isHitter) allPls = allPls.filter((p) => p.pos !== "投");
-  else allPls = allPls.filter((p) => p.pos === "投");
   allPls = sortRoster(allPls);
+  const isHitter = state.statView === "hitter";
 
   function statHeaders() {
     return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
@@ -2924,13 +2922,6 @@ function renderResults() {
 }
 
 function bindEvents() {
-  // Click sound for all buttons
-  document.querySelector("#app")?.addEventListener("click", (event) => {
-    const btn = event.target.closest("button");
-    if (!btn || btn.disabled) return;
-    playClickSound();
-  });
-
   document.querySelector("[data-continue]")?.addEventListener("click", () => {
     if (loadSavedState()) render();
   });
