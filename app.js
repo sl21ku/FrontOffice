@@ -222,9 +222,9 @@ function fairMarketValue(player) {
   return Math.round(clamp(salary, 0.05, 7.0) * 100) / 100;
 }
 
-function generatePlayerStats(player, rating = overall(player), teamBoost = 0) {
+function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ptMultiplier = 1) {
   const role = clamp(rating + teamBoost + rand(-12, 12), 30, 99);
-  const playingTime = clamp((role - 35) / 64, 0.12, 1);
+  const playingTime = clamp((role - 35) / 64, 0.08, 1) * ptMultiplier;
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
@@ -284,7 +284,14 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0) {
 }
 
 function positionGameLog(player, games) {
-  return { [player.pos]: games };
+  const result = { [player.pos]: games };
+  if (games < 45 || rand(1, 100) > 28) return result;
+  const options = POSITIONS.filter((pos) => pos !== "投" && pos !== player.pos);
+  const subPos = pick(options);
+  const subGames = clamp(Math.round(games * rand(5, 15) / 100), 2, Math.max(2, games - 1));
+  result[player.pos] = games - subGames;
+  result[subPos] = subGames;
+  return result;
 }
 
 function generateCareerStats(player, rating, teamId, rookie = false) {
@@ -1411,9 +1418,10 @@ function seasonLeaders(roster) {
     }));
 }
 
-function ageAndUpdatePlayer(player, teamBoost, teamId) {
+function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   const rating = overall(player);
-  player.stats = generatePlayerStats(player, rating, teamBoost);
+  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.5 : 0.2) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.45 : 0.15);
+  player.stats = generatePlayerStats(player, rating, teamBoost, ptMultiplier);
   player.lastStats = formatStats(player.stats);
   player.careerStats = Array.isArray(player.careerStats) ? player.careerStats : [];
   player.careerStats.push({
@@ -1502,7 +1510,22 @@ function simulateSeason() {
   teams.forEach((team) => {
     const row = rows.find((item) => item.team.id === team.id);
     const teamBoost = row ? (row.strength.total - 62) / 2 : 0;
-    (state.rosters[team.id] || []).forEach((player) => ageAndUpdatePlayer(player, teamBoost, team.id));
+    const roster = state.rosters[team.id] || [];
+
+    // Calculate position depth ranks
+    const posRanks = {};
+    const hitters = roster.filter((p) => p.pos !== "投");
+    const byPos = {};
+    hitters.forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
+    Object.values(byPos).forEach((group) => {
+      group.sort((a, b) => overall(b) - overall(a));
+      group.forEach((p, i) => { posRanks[p.id] = i; });
+    });
+
+    roster.forEach((player) => {
+      const posRank = posRanks[player.id] ?? 0;
+      ageAndUpdatePlayer(player, teamBoost, team.id, posRank);
+    });
   });
 
   const roster = myRoster();
