@@ -40,18 +40,18 @@ const DRAFT_MAX_ROUNDS = 7;
 const PROTECT_LIST_SIZE = 28;
 
 const teams = [
-  { id: "T01", league: "B", name: "北都フロスト", area: "北都", type: "投手王国", color: "#25705a", budget: 46, power: { hit: 55, sp: 82, rp: 74, def: 67, run: 54 } },
-  { id: "T02", league: "B", name: "湾岸レイカーズ", area: "湾岸", type: "強力打線", color: "#bd8b2c", budget: 55, power: { hit: 84, sp: 58, rp: 61, def: 55, run: 62 } },
-  { id: "T03", league: "B", name: "西京クラウン", area: "西京", type: "常勝軍団", color: "#8b2f2f", budget: 73, power: { hit: 76, sp: 76, rp: 79, def: 72, run: 58 } },
-  { id: "T04", league: "B", name: "南海ブルームス", area: "南海", type: "育成型", color: "#2a6da8", budget: 36, power: { hit: 59, sp: 63, rp: 57, def: 65, run: 72 } },
-  { id: "T05", league: "B", name: "東都ライナーズ", area: "東都", type: "バランス型", color: "#315f45", budget: 48, power: { hit: 68, sp: 69, rp: 68, def: 68, run: 66 } },
-  { id: "T06", league: "B", name: "山陽ガーディアンズ", area: "山陽", type: "守備重視", color: "#687348", budget: 40, power: { hit: 54, sp: 68, rp: 72, def: 86, run: 76 } },
-  { id: "T07", league: "Z", name: "北陸ミスト", area: "北陸", type: "再建期", color: "#4f7180", budget: 27, power: { hit: 51, sp: 52, rp: 55, def: 58, run: 63 } },
-  { id: "T08", league: "Z", name: "港町アンカーズ", area: "港町", type: "助っ人依存", color: "#126b7c", budget: 43, power: { hit: 73, sp: 55, rp: 64, def: 59, run: 55 } },
-  { id: "T09", league: "Z", name: "中央レガシー", area: "中央", type: "名門低迷", color: "#574d91", budget: 58, power: { hit: 62, sp: 61, rp: 60, def: 57, run: 52 } },
-  { id: "T10", league: "Z", name: "海峡スプリンツ", area: "海峡", type: "機動力型", color: "#1f7a69", budget: 34, power: { hit: 58, sp: 56, rp: 58, def: 69, run: 88 } },
-  { id: "T11", league: "Z", name: "湖都スターンズ", area: "湖都", type: "素材型", color: "#5f7d35", budget: 30, power: { hit: 56, sp: 59, rp: 53, def: 56, run: 67 } },
-  { id: "T12", league: "Z", name: "新都メトロズ", area: "新都", type: "新興球団", color: "#9b6032", budget: 65, power: { hit: 66, sp: 57, rp: 62, def: 61, run: 60 } },
+  { id: "T01", league: "B", name: "北海道ファイターズ", area: "北海道", type: "投手王国", color: "#1a5276", budget: 46, power: { hit: 53, sp: 82, rp: 74, def: 68, run: 56 } },
+  { id: "T02", league: "B", name: "東北ゴールデンズ", area: "東北", type: "再建期", color: "#b8860b", budget: 30, power: { hit: 52, sp: 54, rp: 56, def: 60, run: 64 } },
+  { id: "T03", league: "B", name: "千葉マリーンズ", area: "千葉", type: "バランス型", color: "#2471a3", budget: 48, power: { hit: 68, sp: 68, rp: 68, def: 67, run: 66 } },
+  { id: "T04", league: "B", name: "埼玉ライオンズ", area: "埼玉", type: "強力打線", color: "#1a4d8f", budget: 55, power: { hit: 85, sp: 57, rp: 60, def: 54, run: 63 } },
+  { id: "T05", league: "B", name: "福岡ファルコンズ", area: "福岡", type: "常勝軍団", color: "#c0392b", budget: 72, power: { hit: 78, sp: 74, rp: 78, def: 73, run: 60 } },
+  { id: "T06", league: "B", name: "大阪タイガース", area: "大阪", type: "守備重視", color: "#f1c40f", budget: 42, power: { hit: 56, sp: 64, rp: 70, def: 86, run: 77 } },
+  { id: "T07", league: "Z", name: "神戸ウェイブス", area: "神戸", type: "機動力型", color: "#16a085", budget: 34, power: { hit: 57, sp: 58, rp: 56, def: 70, run: 89 } },
+  { id: "T08", league: "Z", name: "東京ジャイアンツ", area: "東京", type: "名門", color: "#e74c3c", budget: 65, power: { hit: 75, sp: 63, rp: 66, def: 60, run: 55 } },
+  { id: "T09", league: "Z", name: "東京スパローズ", area: "東京", type: "育成型", color: "#27ae60", budget: 36, power: { hit: 58, sp: 62, rp: 56, def: 66, run: 73 } },
+  { id: "T10", league: "Z", name: "横浜ベイスターズ", area: "横浜", type: "打撃型", color: "#2980b9", budget: 44, power: { hit: 72, sp: 58, rp: 62, def: 58, run: 64 } },
+  { id: "T11", league: "Z", name: "広島カープ", area: "広島", type: "素材型", color: "#d35400", budget: 31, power: { hit: 54, sp: 60, rp: 52, def: 57, run: 69 } },
+  { id: "T12", league: "Z", name: "愛知ドラゴンズ", area: "愛知", type: "投手型", color: "#2c3e50", budget: 43, power: { hit: 60, sp: 72, rp: 65, def: 63, run: 54 } },
 ];
 
 const state = {
