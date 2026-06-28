@@ -1339,6 +1339,18 @@ function sortRoster(roster) {
         va = a.pos === "投" ? (a.stats?.strikeouts || 0) : (a.stats?.rbi || 0);
         vb = b.pos === "投" ? (b.stats?.strikeouts || 0) : (b.stats?.rbi || 0);
         break;
+      case "hits":
+        va = a.pos === "投" ? (a.stats?.innings || 0) : (a.stats?.hits || 0);
+        vb = b.pos === "投" ? (b.stats?.innings || 0) : (b.stats?.hits || 0);
+        break;
+      case "sb":
+        va = a.pos === "投" ? (a.stats?.saves || 0) : (a.stats?.stolenBases || 0);
+        vb = b.pos === "投" ? (b.stats?.saves || 0) : (b.stats?.stolenBases || 0);
+        break;
+      case "ops":
+        va = a.pos === "投" ? -(a.stats?.era || 99) : (a.stats?.ops || 0);
+        vb = b.pos === "投" ? -(b.stats?.era || 99) : (b.stats?.ops || 0);
+        break;
       case "games": va = a.stats?.games || 0; vb = b.stats?.games || 0; break;
       default: va = overall(a); vb = overall(b);
     }
@@ -1843,7 +1855,7 @@ function renderRosterPanel(title, tradeMode) {
   const isHitter = state.statView === "hitter";
 
   function statHeaders() {
-    return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
+    return `${sortHeader("試合", "games")}${sortHeader("打/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
   }
 
   function renderStatCells(p) {
@@ -2269,15 +2281,17 @@ function renderRecordsPanel() {
   allPls = sortRoster(allPls);
   const isHitter = state.statView === "hitter";
 
-  function statHeaders() {
-    return `${sortHeader("試合/登板", "games")}${sortHeader("打率/防", "avg")}${sortHeader("本/勝", "hr")}${sortHeader("点/奪三", "rbi")}`;
-  }
+  // Power Pros style: more comprehensive stat columns
+  const statHeaders = isHitter
+    ? `${sortHeader("試合", "games")}${sortHeader("打率", "avg")}${sortHeader("安打", "hits")}${sortHeader("本塁打", "hr")}${sortHeader("打点", "rbi")}${sortHeader("盗塁", "sb")}${sortHeader("OPS", "ops")}`
+    : `${sortHeader("登板", "games")}${sortHeader("防御率", "avg")}${sortHeader("勝利", "hr")}${sortHeader("セーブ", "sb")}${sortHeader("奪三振", "rbi")}${sortHeader("投球回", "hits")}${sortHeader("防率", "ops")}`;
 
   function statCells(p) {
     if (p.pos === "投") {
-      return `<td>${p.stats?.games || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td><td>${p.stats?.wins || 0}</td><td>${p.stats?.strikeouts || 0}</td>`;
+      return `<td>${p.stats?.games || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td><td>${p.stats?.wins || 0}</td><td>${p.stats?.saves || 0}</td><td>${p.stats?.strikeouts || 0}</td><td>${p.stats?.innings || 0}</td><td>${p.stats?.era?.toFixed(2) || "-"}</td>`;
     }
-    return `<td>${p.stats?.games || 0}</td><td>${formatRate(p.stats?.average)}</td><td>${p.stats?.homers || 0}</td><td>${p.stats?.rbi || 0}</td>`;
+    const ops = (p.stats?.ops != null && isFinite(p.stats.ops)) ? Number(p.stats.ops).toFixed(3) : ".000";
+    return `<td>${p.stats?.games || 0}</td><td>${formatRate(p.stats?.average)}</td><td>${p.stats?.hits || 0}</td><td>${p.stats?.homers || 0}</td><td>${p.stats?.rbi || 0}</td><td>${p.stats?.stolenBases || 0}</td><td>${ops}</td>`;
   }
 
   return `
@@ -2304,7 +2318,7 @@ function renderRecordsPanel() {
                 ${sortHeader("年齢", "age")}
                 ${sortHeader("総合", "overall")}
                 ${sortHeader("年俸", "salary")}
-                ${statHeaders()}
+                ${statHeaders}
               </tr>
             </thead>
             <tbody>
