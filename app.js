@@ -284,14 +284,7 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0) {
 }
 
 function positionGameLog(player, games) {
-  const result = { [player.pos]: games };
-  if (games < 45 || rand(1, 100) > 28) return result;
-  const options = POSITIONS.filter((pos) => pos !== "投" && pos !== player.pos);
-  const subPos = pick(options);
-  const subGames = clamp(Math.round(games * rand(8, 26) / 100), 4, Math.max(4, games - 1));
-  result[player.pos] = games - subGames;
-  result[subPos] = subGames;
-  return result;
+  return { [player.pos]: games };
 }
 
 function generateCareerStats(player, rating, teamId, rookie = false) {
