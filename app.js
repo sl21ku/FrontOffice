@@ -1470,19 +1470,22 @@ function normalizeRosterPositionGames() {
     roster.filter((p) => p.pos !== "投").forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
     Object.values(byPos).forEach((group) => {
       group.sort((a, b) => overall(b) - overall(a));
-      const totalG = group.reduce((s, p) => s + (p.stats?.games || p.careerStats?.[0]?.stats?.games || 0), 0);
-      if (totalG > 155) {
-        const scale = 155 / totalG;
-        group.forEach((p) => {
-          const scaleG = (g) => Math.max(1, Math.round(g * scale));
-          if (p.stats?.games) p.stats.games = scaleG(p.stats.games);
-          if (p.careerStats) p.careerStats.forEach((row) => { if (row.stats?.games) row.stats.games = scaleG(row.stats.games); });
-        });
-      }
-      // Hard cap: rank 0 >= 90 max 135, rank 1 max 40, rest max 10
+      // Distribute 143 games per position: rank0 gets ~120, rank1 gets the rest, rank2+ get minimal
+      const MAX_G = 143;
+      const rank0Target = clamp(Math.round(MAX_G * 0.85), 90, 130);
+      const remaining = MAX_G - rank0Target;
+      const rank1Target = clamp(remaining, 5, 35);
+      
+      const setGames = (p, g) => {
+        p.stats = p.stats || {};
+        p.stats.games = g;
+        (p.careerStats || []).forEach((row) => { if (row.stats) row.stats.games = g; });
+      };
+
       group.forEach((p, i) => {
-        const maxG = i === 0 ? 135 : i === 1 ? 40 : 10;
-        if (p.stats?.games && p.stats.games > maxG) p.stats.games = maxG;
+        if (i === 0) setGames(p, rank0Target);
+        else if (i === 1) setGames(p, rank1Target);
+        else setGames(p, Math.max(2, Math.round((MAX_G - rank0Target - rank1Target) / Math.max(1, group.length - 2))));
       });
     });
   });
@@ -1556,20 +1559,22 @@ function simulateSeason() {
       ageAndUpdatePlayer(player, teamBoost, team.id, posRank);
     });
 
-    // Normalize position games: total per position capped at ~155
+    // Normalize position games: distribute ~143 per position
     const fielders = roster.filter((p) => p.pos !== "投");
-    const byPosAfter = {};
-    fielders.forEach((p) => { if (!byPosAfter[p.pos]) byPosAfter[p.pos] = []; byPosAfter[p.pos].push(p); });
-    Object.values(byPosAfter).forEach((group) => {
-      const totalG = group.reduce((s, p) => s + (p.stats?.games || 0), 0);
-      if (totalG > 155) {
-        const scale = 155 / totalG;
-        group.forEach((p) => {
-          if (p.stats && p.stats.games) {
-            p.stats.games = Math.max(3, Math.round(p.stats.games * scale));
-          }
-        });
-      }
+    const afterByPos = {};
+    fielders.forEach((p) => { if (!afterByPos[p.pos]) afterByPos[p.pos] = []; afterByPos[p.pos].push(p); });
+    Object.values(afterByPos).forEach((group) => {
+      group.sort((a, b) => overall(b) - overall(a));
+      const MAX_G = 143;
+      const r0 = clamp(Math.round(MAX_G * 0.85), 90, 130);
+      const r1 = clamp(MAX_G - r0, 5, 35);
+      group.forEach((p, i) => {
+        if (p.stats) {
+          if (i === 0) p.stats.games = r0;
+          else if (i === 1) p.stats.games = r1;
+          else p.stats.games = Math.max(2, Math.round((MAX_G - r0 - r1) / Math.max(1, group.length - 2)));
+        }
+      });
     });
   });
 
