@@ -485,10 +485,6 @@ function initGame(teamId) {
   state.news = [`${getTeam().name}の編成室が始動。${state.year}年オフの補強方針が問われます。`];
   state.results = null;
   state.phase = "offseason";
-
-  // Normalize initial roster position games
-  normalizeRosterPositionGames();
-
   state.activeTab = "roster";
   state.positionFilter = "全";
   state.scoutTeamId = teams.find((team) => team.id !== teamId)?.id || teamId;
@@ -1425,7 +1421,7 @@ function seasonLeaders(roster) {
 
 function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   const rating = overall(player);
-  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.5 : 0.2) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.35 : 0.06);
+  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.4 : 0.15) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.22 : 0.04);
   player.stats = generatePlayerStats(player, rating, teamBoost, ptMultiplier);
   player.lastStats = formatStats(player.stats);
   player.careerStats = Array.isArray(player.careerStats) ? player.careerStats : [];
@@ -1462,34 +1458,6 @@ function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   player.faYears += 1;
   const faThreshold = player.originType === "高卒" ? 8 : 7;
   player.faEligible = player.faYears >= faThreshold;
-}
-
-function normalizeRosterPositionGames() {
-  Object.values(state.rosters).forEach((roster) => {
-    const byPos = {};
-    roster.filter((p) => p.pos !== "投").forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
-    Object.values(byPos).forEach((group) => {
-      group.sort((a, b) => overall(b) - overall(a));
-      // Distribute 143 games per position: rank0 gets ~120, rank1 gets the rest, rank2+ get minimal
-      const MAX_G = 143;
-      const rank0Target = clamp(Math.round(MAX_G * 0.85), 90, 130);
-      const remaining = MAX_G - rank0Target;
-      const rank1Target = clamp(remaining, 5, 35);
-      
-      const setGames = (p, g) => {
-        p.stats = p.stats || {};
-        p.stats.games = g;
-        p.stats.positionGames = { [p.pos]: g };
-        (p.careerStats || []).forEach((row) => { if (row.stats) { row.stats.games = g; row.stats.positionGames = { [p.pos]: g }; } });
-      };
-
-      group.forEach((p, i) => {
-        if (i === 0) setGames(p, rank0Target);
-        else if (i === 1) setGames(p, rank1Target);
-        else setGames(p, Math.max(2, Math.round((MAX_G - rank0Target - rank1Target) / Math.max(1, group.length - 2))));
-      });
-    });
-  });
 }
 
 function leagueStandings(rows) {
@@ -1558,24 +1526,6 @@ function simulateSeason() {
     roster.forEach((player) => {
       const posRank = posRanks[player.id] ?? 0;
       ageAndUpdatePlayer(player, teamBoost, team.id, posRank);
-    });
-
-    // Normalize position games: distribute ~143 per position
-    const fielders = roster.filter((p) => p.pos !== "投");
-    const afterByPos = {};
-    fielders.forEach((p) => { if (!afterByPos[p.pos]) afterByPos[p.pos] = []; afterByPos[p.pos].push(p); });
-    Object.values(afterByPos).forEach((group) => {
-      group.sort((a, b) => overall(b) - overall(a));
-      const MAX_G = 143;
-      const r0 = clamp(Math.round(MAX_G * 0.85), 90, 130);
-      const r1 = clamp(MAX_G - r0, 5, 35);
-      group.forEach((p, i) => {
-        if (p.stats) {
-          const g = i === 0 ? r0 : i === 1 ? r1 : Math.max(2, Math.round((MAX_G - r0 - r1) / Math.max(1, group.length - 2)));
-          p.stats.games = g;
-          p.stats.positionGames = { [p.pos]: g };
-        }
-      });
     });
   });
 
