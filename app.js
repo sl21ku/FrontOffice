@@ -228,6 +228,7 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ta
     targetGames = clamp(Math.round(28 + clamp((role - 35) / 64, 0.08, 1) * 118 + rand(-12, 14)), 1, 143);
   }
   const playingTime = clamp(targetGames / 135, 0.05, 1);
+  const rScale = targetGames / 143;
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
@@ -243,24 +244,24 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ta
     const holds = starter ? 0 : clamp(Math.round((rating - 48) / 4 + rand(-2, 12)), 0, 42);
     return { kind: "pitcher", games: g, starts, reliefGames, innings, wins, era, strikeouts, walks, saves, holds, positionGames: { 投: g } };
   }
-  const plateAppearances = clamp(Math.round(targetGames * (2.6 + playingTime * 1.65) + rand(-12, 18)), targetGames, 680);
-  const hWalks = clamp(Math.round(plateAppearances * (0.035 + player.batting / 2600 + rand(-8, 12) / 1000)), 1, Math.round(plateAppearances * 0.2));
-  const hitByPitch = clamp(Math.round(plateAppearances * rand(0, 12) / 1000), 0, 14);
-  const sacFlies = clamp(Math.round(targetGames * rand(0, 5) / 100), 0, 8);
+  const plateAppearances = clamp(Math.round(targetGames * (2.6 + playingTime * 1.65) + rand(-12, 18) * rScale), targetGames, 680);
+  const hWalks = clamp(Math.round(plateAppearances * (0.035 + player.batting / 2600 + rand(-8, 12) / 1000 * rScale)), 1, Math.round(plateAppearances * 0.2));
+  const hitByPitch = clamp(Math.round(plateAppearances * rand(0, 12) / 1000 * rScale), 0, 14);
+  const sacFlies = clamp(Math.round(targetGames * rand(0, 5) / 100 * rScale), 0, 8);
   const atBats = Math.max(1, plateAppearances - hWalks - hitByPitch - sacFlies);
-  const averageTarget = clamp(0.18 + player.batting / 650 + teamBoost / 2800 + rand(-22, 22) / 1000, 0.17, 0.34);
+  const averageTarget = clamp(0.18 + player.batting / 650 + teamBoost / 2800 + rand(-22, 22) / 1000 * rScale, 0.17, 0.34);
   const hits = clamp(Math.round(atBats * averageTarget), 0, atBats);
-  const homers = clamp(Math.round((player.power - 32) / 2.4 * playingTime + rand(-4, 7)), 0, Math.min(52, hits));
-  const triples = clamp(Math.round(hits * (0.015 + player.running / 2600) + rand(-1, 2)), 0, Math.max(0, hits - homers));
-  const doubles = clamp(Math.round(hits * (0.14 + player.power / 1200) + rand(-2, 4)), 0, Math.max(0, hits - homers - triples));
+  const homers = clamp(Math.round((player.power - 32) / 2.4 * playingTime + rand(-4, 7) * rScale), 0, Math.min(52, hits));
+  const triples = clamp(Math.round(hits * (0.015 + player.running / 2600) + rand(-1, 2) * rScale), 0, Math.max(0, hits - homers));
+  const doubles = clamp(Math.round(hits * (0.14 + player.power / 1200) + rand(-2, 4) * rScale), 0, Math.max(0, hits - homers - triples));
   const singles = Math.max(0, hits - doubles - triples - homers);
   const totalBases = singles + doubles * 2 + triples * 3 + homers * 4;
   const average = hits / atBats;
   const onBase = (hits + hWalks + hitByPitch) / Math.max(1, atBats + hWalks + hitByPitch + sacFlies);
   const slugging = totalBases / atBats;
   const ops = onBase + slugging;
-  const rbi = clamp(Math.round(targetGames * (0.18 + player.power / 310) + teamBoost / 2 + rand(-10, 16)), 2, 132);
-  const stolenBases = clamp(Math.round((player.running - 42) / 3.2 * playingTime + rand(-3, 6)), 0, 42);
+  const rbi = clamp(Math.round(targetGames * (0.18 + player.power / 310) + teamBoost / 2 + rand(-10, 16) * rScale), 2, 132);
+  const stolenBases = clamp(Math.round((player.running - 42) / 3.2 * playingTime + rand(-3, 6) * rScale), 0, 42);
   return {
     kind: "hitter",
     games: targetGames,
