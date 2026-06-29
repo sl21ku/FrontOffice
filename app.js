@@ -1479,7 +1479,8 @@ function normalizeRosterPositionGames() {
       const setGames = (p, g) => {
         p.stats = p.stats || {};
         p.stats.games = g;
-        (p.careerStats || []).forEach((row) => { if (row.stats) row.stats.games = g; });
+        p.stats.positionGames = { [p.pos]: g };
+        (p.careerStats || []).forEach((row) => { if (row.stats) { row.stats.games = g; row.stats.positionGames = { [p.pos]: g }; } });
       };
 
       group.forEach((p, i) => {
@@ -1570,9 +1571,9 @@ function simulateSeason() {
       const r1 = clamp(MAX_G - r0, 5, 35);
       group.forEach((p, i) => {
         if (p.stats) {
-          if (i === 0) p.stats.games = r0;
-          else if (i === 1) p.stats.games = r1;
-          else p.stats.games = Math.max(2, Math.round((MAX_G - r0 - r1) / Math.max(1, group.length - 2)));
+          const g = i === 0 ? r0 : i === 1 ? r1 : Math.max(2, Math.round((MAX_G - r0 - r1) / Math.max(1, group.length - 2)));
+          p.stats.games = g;
+          p.stats.positionGames = { [p.pos]: g };
         }
       });
     });
