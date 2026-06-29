@@ -222,11 +222,12 @@ function fairMarketValue(player) {
   return Math.round(clamp(salary, 0.05, 7.0) * 100) / 100;
 }
 
-function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ptMultiplier = 1) {
+function generatePlayerStats(player, rating = overall(player), teamBoost = 0, targetGames = undefined) {
   const role = clamp(rating + teamBoost + rand(-12, 12), 30, 99);
   const playingTime = clamp((role - 35) / 64, 0.08, 1);
-  const rawGames = Math.round(28 + playingTime * 118 + rand(-12, 14));
-  const games = clamp(Math.round(rawGames * ptMultiplier), 1, 143);
+  if (targetGames == null) {
+    targetGames = clamp(Math.round(28 + playingTime * 118 + rand(-12, 14)), 1, 143);
+  }
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
@@ -242,11 +243,11 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, pt
     const holds = starter ? 0 : clamp(Math.round((rating - 48) / 4 + rand(-2, 12)), 0, 42);
     return { kind: "pitcher", games: g, starts, reliefGames, innings, wins, era, strikeouts, walks, saves, holds, positionGames: { 投: g } };
   }
-  const plateAppearances = clamp(Math.round(games * (2.6 + playingTime * 1.65) + rand(-12, 18)), games, 680);
-  const walks = clamp(Math.round(plateAppearances * (0.035 + player.batting / 2600 + rand(-8, 12) / 1000)), 1, Math.round(plateAppearances * 0.2));
+  const plateAppearances = clamp(Math.round(targetGames * (2.6 + playingTime * 1.65) + rand(-12, 18)), targetGames, 680);
+  const hWalks = clamp(Math.round(plateAppearances * (0.035 + player.batting / 2600 + rand(-8, 12) / 1000)), 1, Math.round(plateAppearances * 0.2));
   const hitByPitch = clamp(Math.round(plateAppearances * rand(0, 12) / 1000), 0, 14);
-  const sacFlies = clamp(Math.round(games * rand(0, 5) / 100), 0, 8);
-  const atBats = Math.max(1, plateAppearances - walks - hitByPitch - sacFlies);
+  const sacFlies = clamp(Math.round(targetGames * rand(0, 5) / 100), 0, 8);
+  const atBats = Math.max(1, plateAppearances - hWalks - hitByPitch - sacFlies);
   const averageTarget = clamp(0.18 + player.batting / 650 + teamBoost / 2800 + rand(-22, 22) / 1000, 0.17, 0.34);
   const hits = clamp(Math.round(atBats * averageTarget), 0, atBats);
   const homers = clamp(Math.round((player.power - 32) / 2.4 * playingTime + rand(-4, 7)), 0, Math.min(52, hits));
@@ -255,15 +256,15 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, pt
   const singles = Math.max(0, hits - doubles - triples - homers);
   const totalBases = singles + doubles * 2 + triples * 3 + homers * 4;
   const average = hits / atBats;
-  const onBase = (hits + walks + hitByPitch) / Math.max(1, atBats + walks + hitByPitch + sacFlies);
+  const onBase = (hits + hWalks + hitByPitch) / Math.max(1, atBats + hWalks + hitByPitch + sacFlies);
   const slugging = totalBases / atBats;
   const ops = onBase + slugging;
-  const rbi = clamp(Math.round(games * (0.18 + player.power / 310) + teamBoost / 2 + rand(-10, 16)), 2, 132);
+  const rbi = clamp(Math.round(targetGames * (0.18 + player.power / 310) + teamBoost / 2 + rand(-10, 16)), 2, 132);
   const stolenBases = clamp(Math.round((player.running - 42) / 3.2 * playingTime + rand(-3, 6)), 0, 42);
   return {
     kind: "hitter",
-    games,
-    positionGames: positionGameLog(player, games),
+    games: targetGames,
+    positionGames: positionGameLog(player, targetGames),
     plateAppearances,
     atBats,
     hits,
@@ -271,7 +272,7 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, pt
     doubles,
     triples,
     homers,
-    walks,
+    walks: hWalks,
     hitByPitch,
     sacFlies,
     totalBases,
@@ -1421,8 +1422,18 @@ function seasonLeaders(roster) {
 
 function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   const rating = overall(player);
-  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.4 : 0.15) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.22 : 0.04);
-  player.stats = generatePlayerStats(player, rating, teamBoost, ptMultiplier);
+  // Calculate target games by position rank (per-team cap)
+  let targetGames;
+  if (player.pos === "投") {
+    targetGames = undefined; // pitchers use internal formula
+  } else if (posRank === 0) {
+    targetGames = 120 + rand(-8, 8);
+  } else if (posRank === 1) {
+    targetGames = 18 + rand(-5, 8);
+  } else {
+    targetGames = clamp(rand(0, 3), 0, 5);
+  }
+  player.stats = generatePlayerStats(player, rating, teamBoost, targetGames);
   player.lastStats = formatStats(player.stats);
   player.careerStats = Array.isArray(player.careerStats) ? player.careerStats : [];
   player.careerStats.push({
