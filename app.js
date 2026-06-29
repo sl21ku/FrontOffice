@@ -484,6 +484,25 @@ function initGame(teamId) {
   state.released = [];
   state.history = [];
   state.news = [`${getTeam().name}の編成室が始動。${state.year}年オフの補強方針が問われます。`];
+
+  // Apply position rank stats to initial rosters
+  Object.values(state.rosters).forEach((roster) => {
+    const byPos = {};
+    roster.filter((p) => p.pos !== "投").forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
+    Object.values(byPos).forEach((group) => {
+      group.sort((a, b) => overall(b) - overall(a));
+      group.forEach((p, i) => {
+        const tg = i === 0 ? 120 + rand(-8, 8) : i === 1 ? 18 + rand(-5, 8) : clamp(rand(0, 3), 0, 5);
+        p.stats = generatePlayerStats(p, overall(p), 0, tg);
+        p.lastStats = formatStats(p.stats);
+        // Also update last career year
+        if (p.careerStats.length) {
+          p.careerStats[p.careerStats.length - 1].stats = p.stats;
+        }
+      });
+    });
+  });
+
   state.results = null;
   state.phase = "offseason";
   state.activeTab = "roster";
