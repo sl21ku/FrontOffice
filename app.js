@@ -224,13 +224,15 @@ function fairMarketValue(player) {
 
 function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ptMultiplier = 1) {
   const role = clamp(rating + teamBoost + rand(-12, 12), 30, 99);
-  const playingTime = clamp((role - 35) / 64, 0.08, 1) * ptMultiplier;
+  const playingTime = clamp((role - 35) / 64, 0.08, 1);
+  const rawGames = Math.round(28 + playingTime * 118 + rand(-12, 14));
+  const games = clamp(Math.round(rawGames * ptMultiplier), 1, 143);
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
     const reliefGames = starter ? clamp(rand(0, 6), 0, 8) : clamp(Math.round(18 + playingTime * 42 + rand(-8, 8)), 12, 64);
-    const games = clamp(starts + reliefGames, starts, 70);
-    const inningsBase = starter ? starts * (4.6 + playingTime * 1.9) : games * (0.8 + playingTime * 0.45);
+    const g = clamp(starts + reliefGames, starts, 70);
+    const inningsBase = starter ? starts * (4.6 + playingTime * 1.9) : g * (0.8 + playingTime * 0.45);
     const innings = clamp(Math.round(inningsBase + rand(-14, 20)), 8, starter ? 190 : 86);
     const era = clamp(5.8 - rating / 28 - teamBoost / 90 + rand(-42, 52) / 100, 1.7, 6.8);
     const wins = clamp(Math.round((innings / 22) + (rating - 55) / 6 + rand(-2, 4)), 0, 18);
@@ -238,9 +240,8 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, pt
     const walks = clamp(Math.round(innings * (0.62 - player.control / 190) + rand(-5, 8)), 2, 92);
     const saves = starter ? 0 : clamp(Math.round((rating - 52) / 5 + rand(-3, 8)), 0, 38);
     const holds = starter ? 0 : clamp(Math.round((rating - 48) / 4 + rand(-2, 12)), 0, 42);
-    return { kind: "pitcher", games, starts, reliefGames, innings, wins, era, strikeouts, walks, saves, holds, positionGames: { 投: games } };
+    return { kind: "pitcher", games: g, starts, reliefGames, innings, wins, era, strikeouts, walks, saves, holds, positionGames: { 投: g } };
   }
-  const games = clamp(Math.round(28 + playingTime * 118 + rand(-12, 14)), 18, 143);
   const plateAppearances = clamp(Math.round(games * (2.6 + playingTime * 1.65) + rand(-12, 18)), games, 680);
   const walks = clamp(Math.round(plateAppearances * (0.035 + player.batting / 2600 + rand(-8, 12) / 1000)), 1, Math.round(plateAppearances * 0.2));
   const hitByPitch = clamp(Math.round(plateAppearances * rand(0, 12) / 1000), 0, 14);
@@ -484,6 +485,10 @@ function initGame(teamId) {
   state.news = [`${getTeam().name}の編成室が始動。${state.year}年オフの補強方針が問われます。`];
   state.results = null;
   state.phase = "offseason";
+
+  // Normalize initial roster position games
+  normalizeRosterPositionGames();
+
   state.activeTab = "roster";
   state.positionFilter = "全";
   state.scoutTeamId = teams.find((team) => team.id !== teamId)?.id || teamId;
@@ -1420,7 +1425,7 @@ function seasonLeaders(roster) {
 
 function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   const rating = overall(player);
-  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.5 : 0.2) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.45 : 0.15);
+  const ptMultiplier = player.pos === "投" ? (posRank < 6 ? 1.0 : posRank < 10 ? 0.5 : 0.2) : (posRank === 0 ? 1.0 : posRank === 1 ? 0.35 : 0.06);
   player.stats = generatePlayerStats(player, rating, teamBoost, ptMultiplier);
   player.lastStats = formatStats(player.stats);
   player.careerStats = Array.isArray(player.careerStats) ? player.careerStats : [];
@@ -1457,6 +1462,30 @@ function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   player.faYears += 1;
   const faThreshold = player.originType === "高卒" ? 8 : 7;
   player.faEligible = player.faYears >= faThreshold;
+}
+
+function normalizeRosterPositionGames() {
+  Object.values(state.rosters).forEach((roster) => {
+    const byPos = {};
+    roster.filter((p) => p.pos !== "投").forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
+    Object.values(byPos).forEach((group) => {
+      group.sort((a, b) => overall(b) - overall(a));
+      const totalG = group.reduce((s, p) => s + (p.stats?.games || p.careerStats?.[0]?.stats?.games || 0), 0);
+      if (totalG > 155) {
+        const scale = 155 / totalG;
+        group.forEach((p) => {
+          const scaleG = (g) => Math.max(1, Math.round(g * scale));
+          if (p.stats?.games) p.stats.games = scaleG(p.stats.games);
+          if (p.careerStats) p.careerStats.forEach((row) => { if (row.stats?.games) row.stats.games = scaleG(row.stats.games); });
+        });
+      }
+      // Hard cap: rank 0 >= 90 max 135, rank 1 max 40, rest max 10
+      group.forEach((p, i) => {
+        const maxG = i === 0 ? 135 : i === 1 ? 40 : 10;
+        if (p.stats?.games && p.stats.games > maxG) p.stats.games = maxG;
+      });
+    });
+  });
 }
 
 function leagueStandings(rows) {
