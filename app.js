@@ -224,10 +224,10 @@ function fairMarketValue(player) {
 
 function generatePlayerStats(player, rating = overall(player), teamBoost = 0, targetGames = undefined) {
   const role = clamp(rating + teamBoost + rand(-12, 12), 30, 99);
-  const playingTime = clamp((role - 35) / 64, 0.08, 1);
   if (targetGames == null) {
-    targetGames = clamp(Math.round(28 + playingTime * 118 + rand(-12, 14)), 1, 143);
+    targetGames = clamp(Math.round(28 + clamp((role - 35) / 64, 0.08, 1) * 118 + rand(-12, 14)), 1, 143);
   }
+  const playingTime = clamp(targetGames / 135, 0.05, 1);
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
