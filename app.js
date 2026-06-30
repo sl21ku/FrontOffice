@@ -2026,6 +2026,7 @@ function renderGame() {
   return `
     <div class="app-shell">
       ${renderTopbar(true)}
+      ${renderProgressBar()}
       <main class="layout">
         <aside class="side-summary panel">
           <div class="panel-header">
@@ -2088,6 +2089,7 @@ function renderGame() {
               ${state.results ? renderResults() : `<p class="fine muted">まだ今季の結果はありません。オフの判断を終えたら開幕してください。</p>`}
             </div>
           </section>
+          ${!locked ? renderActionPanel() : ""}
           <section class="panel">
             <div class="panel-header">
               <h2 class="panel-title">編成ニュース</h2>
@@ -2100,6 +2102,80 @@ function renderGame() {
       </main>
     </div>
   `;
+}
+
+function renderProgressBar() {
+  const steps = ["戦力確認", "FA交渉", "現役D", "ドラフト", "開幕準備"];
+  const stepTabMap = ["roster", "fa", "activedraft", "draft", null];
+  let current = 0;
+  if (state.activeTab === "fa") current = 1;
+  if (state.activeTab === "activedraft") current = 2;
+  if (state.activeTab === "draft" || state.draftNominationBoard) current = 3;
+  if (state.activeDraftPhase === "done" && state.draftRound === 0 && state.activeTab === "roster") current = 4;
+
+  return `
+    <div class="progress-bar">
+      ${steps.map((label, i) => {
+        const isDone = i < current;
+        const isCurrent = i === current;
+        const tab = stepTabMap[i];
+        return `<div class="pb-step ${isDone ? 'done' : ''} ${isCurrent ? 'current' : ''}" ${tab ? `onclick="state.activeTab='${tab}';render()"` : ''} style="cursor:${tab ? 'pointer' : 'default'}">${label}</div>`;
+      }).join("")}
+    </div>`;
+}
+
+function renderActionPanel() {
+  const items = [];
+  const myRost = myRoster();
+
+  // Roster check
+  if (myRost.length > ROSTER_MAX) items.push({ sev: "danger", text: `支配下${myRost.length}人（上限${ROSTER_MAX}人超過）`, tab: "roster" });
+  else items.push({ sev: "ok", text: `支配下 ${myRost.length}/${ROSTER_MAX}人`, tab: null });
+
+  // Budget check
+  const budget = budgetLeft();
+  if (budget < 0) items.push({ sev: "danger", text: `予算超過 ${money(-budget)}`, tab: "roster" });
+  else if (budget < 1) items.push({ sev: "warn", text: `予算残わずか ${money(budget)}`, tab: null });
+  else items.push({ sev: "ok", text: `予算残 ${money(budget)}`, tab: null });
+
+  // FA check
+  const ownFA = state.freeAgents.filter((p) => p.formerTeamId === state.selectedTeamId);
+  if (ownFA.length) items.push({ sev: "warn", text: `自球団FA ${ownFA.length}名が宣言中`, tab: "fa" });
+  const faPending = state.freeAgents.length > 0 && ownFA.length === 0;
+  if (faPending) items.push({ sev: "info", text: `FA市場 ${state.freeAgents.length}名`, tab: "fa" });
+  if (state.freeAgents.length === 0 && state.activeTab !== "fa") items.push({ sev: "ok", text: "FA交渉 対象なし", tab: null });
+
+  // Active draft
+  if (state.activeDraftPhase === "nominate") items.push({ sev: "warn", text: "現役D ノミネート待ち", tab: "activedraft" });
+  else if (state.activeDraftPhase === "pick") items.push({ sev: "warn", text: "現役D 指名待ち", tab: "activedraft" });
+  else if (state.activeDraftPhase === "done") items.push({ sev: "ok", text: "現役D 完了", tab: null });
+
+  // Draft
+  if (state.draftNominationBoard) items.push({ sev: "warn", text: "ドラフト 抽選待ち", tab: "draft" });
+  else if (state.draftRound > 0) items.push({ sev: "warn", text: `ドラフト ${state.draftRound}巡目中`, tab: "draft" });
+  else if (state.draftPool.length) items.push({ sev: "info", text: `ドラフト候補 ${state.draftPool.length}名`, tab: "draft" });
+
+  // Posting
+  if (state.postingRequests.length) items.push({ sev: "warn", text: `ポスティング ${state.postingRequests.length}名`, tab: "fa" });
+
+  // Ready check
+  const blockers = items.filter((i) => i.sev === "danger" || i.sev === "warn");
+  const ready = blockers.length === 0;
+
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">やることチェック</h2>
+      </div>
+      <div class="panel-body" style="font-size:12px;">
+        ${ready ? `<div style="color:var(--green);font-weight:800;margin-bottom:8px;">ペナント開幕準備OK</div>` : `<div style="color:var(--red);font-weight:800;margin-bottom:8px;">未完了 ${blockers.length}件</div>`}
+        ${items.map((i) => `
+          <div class="action-item ${i.sev}" ${i.tab ? `onclick="state.activeTab='${i.tab}';render()" style="cursor:pointer"` : ""}>
+            <span>${i.sev === "ok" ? "✅" : i.sev === "warn" ? "⚠️" : i.sev === "danger" ? "❌" : "ℹ️"} ${i.text}</span>
+          </div>
+        `).join("")}
+      </div>
+    </section>`;
 }
 
 function renderActivePanel() {

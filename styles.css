@@ -1462,3 +1462,18 @@ tr:last-child td {
   display: inline-block;
   margin: -1px 0 8px -1px;
 }
+
+/* === Progress Bar === */
+.progress-bar { display: flex; justify-content: center; gap: 0; padding: 8px 20px; background: #eef5f0; border-bottom: 1px solid var(--line); }
+.pb-step { padding: 6px 16px; font-size: 12px; font-weight: 700; color: #aab5ae; position: relative; }
+.pb-step::after { content: "\2192"; position: absolute; right: -8px; color: #c8d4cc; }
+.pb-step:last-child::after { content: ""; }
+.pb-step.done { color: var(--green); }
+.pb-step.current { color: var(--ink); background: white; border-radius: 6px; }
+
+/* === Action Items === */
+.action-item { padding: 5px 8px; margin-bottom: 4px; border-radius: 4px; border-left: 3px solid var(--line); line-height: 1.4; }
+.action-item.ok { border-color: var(--green); background: #f0faf4; }
+.action-item.warn { border-color: #e6a817; background: #fffdf0; }
+.action-item.danger { border-color: var(--red); background: #fff5f5; }
+.action-item.info { border-color: var(--blue); background: #f0f4fa; }
