@@ -2,9 +2,18 @@ const POSITIONS = ["投", "捕", "一", "二", "三", "遊", "外"];
 const FIRST_NAMES = ["佐藤", "鈴木", "高橋", "田中", "伊藤", "渡辺", "山本", "中村", "小林", "加藤", "吉田", "山田", "佐々木", "山口", "松本", "井上", "斎藤", "林", "清水", "近藤", "三浦", "藤田", "大輔", "石川", "福田", "坂本", "武田", "前田", "岡田", "長谷川"];
 const LAST_NAMES = ["健一", "大輔", "翔太", "拓也", "直人", "達也", "亮太", "和也", "大樹", "翔", "裕太", "健太", "大地", "隆", "翼", "雄太", "優", "将也", "康太", "剛", "真人", "陽介", "亮", "和樹", "大輝", "真司", "哲也", "祐介", "大輔", "隼人"];
 const ORIGINS = ["北海道", "東北", "千葉", "埼玉", "福岡", "大阪", "神戸", "東京", "横浜", "広島", "愛知", "沖縄", "新潟", "静岡", "長野", "石川"];
+const FOREIGN_FIRST_NAMES = ["アレックス", "マイク", "カルロス", "ビクター", "ルイス", "ロベルト", "ダニエル", "ジョナサン", "ミゲル", "ブランドン"];
+const FOREIGN_LAST_NAMES = ["ジョンソン", "マルティネス", "ロドリゲス", "スミス", "ガルシア", "ヘルナンデス", "ブラウン", "ウォーカー", "サントス", "クルーズ"];
+const FOREIGN_ORIGINS = ["米国", "ドミニカ共和国", "ベネズエラ", "キューバ", "プエルトリコ", "メキシコ", "韓国", "台湾"];
 const SAVE_KEY = "front-office-sim-save-v1";
+const GAMES_PER_TEAM = 143;
 const ROSTER_TARGET = 67;
 const ROSTER_MAX = 70;
+const ACTIVE_ROSTER_MAX = 31;
+const BENCH_ROSTER_MAX = 26;
+const FOREIGN_ACTIVE_MAX = 5;
+const INTRALEAGUE_GAMES_PER_OPPONENT = 25;
+const INTERLEAGUE_GAMES_PER_OPPONENT = 3;
 const LEAGUES = [
   { id: "B", name: "バリーグ" },
   { id: "Z", name: "ゼリーグ" },
@@ -36,7 +45,8 @@ const SCOUT_COMMENTS_HITTER = [
   "勝負強さは天性のもの。チャンスに強い",
   "打撃センスは素晴らしいが、守備面の強化が必要",
 ];
-const DRAFT_MAX_ROUNDS = 7;
+const DRAFT_MAX_ROUNDS = 10;
+const DRAFT_MAX_TOTAL_PICKS = 120;
 const PROTECT_LIST_SIZE = 28;
 
 const teams = [
@@ -85,7 +95,9 @@ const state = {
   leagueEra: "normal",     // "pitcher" | "normal" | "hitter" - league-wide balance
   faNegotiation: null,     // null or { playerId, type: "retain"|"sign" }
   postingRequests: [],     // players requesting posting
-  draftNominationBoard: null, // null or { myPick, cpuNominations, phase: "board"|"lottery"|"result" }
+  draftNominationBoard: null, // null or { myPick, cpuNominations, phase }
+  lastSeasonStandings: null, // saved for draft order
+  teamFinances: {},         // { [teamId]: adjustment in 億 }
 };
 
 function clamp(value, min, max) {
@@ -115,7 +127,8 @@ function teamName(teamId) {
   return teams.find((team) => team.id === teamId)?.name || "未所属";
 }
 
-function playerName(index) {
+function playerName(index, foreign = false) {
+  if (foreign) return `${pick(FOREIGN_FIRST_NAMES)} ${pick(FOREIGN_LAST_NAMES)}`;
   return `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`;
 }
 
@@ -147,6 +160,7 @@ function generatePitchTypes() {
 function createPlayer(teamId, index, bias = 0, rookie = false, forcePos = null) {
   const pos = forcePos || (index % 5 === 0 ? "投" : pick(POSITIONS.slice(1)));
   const age = rookie ? rand(18, 23) : rand(20, 38);
+  const foreign = !rookie && rand(1, 100) <= 9;
   const peak = age < 25 ? 5 : age > 33 ? -7 : 0;
   const eraBias = state.leagueEra === "pitcher" ? (pos === "投" ? 4 : -3) : state.leagueEra === "hitter" ? (pos === "投" ? -3 : 4) : 0;
   const base = clamp(rand(44, 82) + bias + peak + eraBias, 35, 96);
@@ -163,11 +177,13 @@ function createPlayer(teamId, index, bias = 0, rookie = false, forcePos = null) 
 
   const player = {
     id: `${teamId}-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
-    name: playerName(index),
+    name: playerName(index, foreign),
     teamId,
     pos,
     age,
-    origin: pick(ORIGINS),
+    origin: foreign ? pick(FOREIGN_ORIGINS) : pick(ORIGINS),
+    nationality: foreign ? "外国人" : "国内",
+    isForeign: foreign,
     throwBat: throwBatProfile(pos),
     height: body.height,
     weight: body.weight,
@@ -225,10 +241,10 @@ function fairMarketValue(player) {
 function generatePlayerStats(player, rating = overall(player), teamBoost = 0, targetGames = undefined) {
   const role = clamp(rating + teamBoost + rand(-12, 12), 30, 99);
   if (targetGames == null) {
-    targetGames = clamp(Math.round(28 + clamp((role - 35) / 64, 0.08, 1) * 118 + rand(-12, 14)), 1, 143);
+    targetGames = clamp(Math.round(28 + clamp((role - 35) / 64, 0.08, 1) * 118 + rand(-12, 14)), 1, GAMES_PER_TEAM);
   }
   const playingTime = clamp(targetGames / 135, 0.05, 1);
-  const rScale = targetGames / 143;
+  const rScale = targetGames / GAMES_PER_TEAM;
   if (player.pos === "投") {
     const starter = player.stamina + player.velocity + player.control > 190;
     const starts = starter ? clamp(Math.round(playingTime * 26 + rand(-4, 4)), 6, 29) : clamp(Math.round(playingTime * 6 + rand(-2, 3)), 0, 12);
@@ -286,6 +302,47 @@ function generatePlayerStats(player, rating = overall(player), teamBoost = 0, ta
   };
 }
 
+function noAppearanceStats(player) {
+  if (player.pos === "投") {
+    return {
+      kind: "pitcher",
+      games: 0,
+      starts: 0,
+      reliefGames: 0,
+      innings: 0,
+      wins: 0,
+      era: 0,
+      strikeouts: 0,
+      walks: 0,
+      saves: 0,
+      holds: 0,
+      positionGames: { 投: 0 },
+    };
+  }
+  return {
+    kind: "hitter",
+    games: 0,
+    positionGames: { [player.pos]: 0 },
+    plateAppearances: 0,
+    atBats: 0,
+    hits: 0,
+    singles: 0,
+    doubles: 0,
+    triples: 0,
+    homers: 0,
+    walks: 0,
+    hitByPitch: 0,
+    sacFlies: 0,
+    totalBases: 0,
+    average: 0,
+    onBase: 0,
+    slugging: 0,
+    ops: 0,
+    rbi: 0,
+    stolenBases: 0,
+  };
+}
+
 function positionGameLog(player, games) {
   const result = { [player.pos]: games };
   if (games < 45 || rand(1, 100) > 28) return result;
@@ -317,8 +374,9 @@ function generateCareerStats(player, rating, teamId, rookie = false) {
 
 function formatStats(stats) {
   if (!stats) return "-";
+  if ((stats.games || 0) === 0) return "一軍出場なし";
   if (stats.kind === "pitcher") {
-    return `${stats.games}登 防${stats.era.toFixed(2)} ${stats.wins}勝`;
+    return `${stats.games}登 防${(stats.era || 0).toFixed(2)} ${stats.wins}勝`;
   }
   return `${stats.games}試 打率${formatRate(stats.average)} ${stats.homers}本`;
 }
@@ -331,14 +389,15 @@ function formatRate(value) {
 
 function formatPositionGames(positionGames) {
   if (!positionGames) return "-";
-  return Object.entries(positionGames)
+  const text = Object.entries(positionGames)
     .filter(([, games]) => games > 0)
     .map(([pos, games]) => `${pos}${games}`)
     .join(" / ");
+  return text || "出場なし";
 }
 
 function normalizeStats(player, stats) {
-  if (!stats) return generatePlayerStats(player, overall(player), 0);
+  if (!stats) return noAppearanceStats(player);
   if (stats.kind === "pitcher") {
     stats.starts = stats.starts ?? (stats.games > 35 ? 0 : Math.max(0, Math.min(stats.games, Math.round((stats.innings || 0) / 6))));
     stats.reliefGames = stats.reliefGames ?? Math.max(0, stats.games - stats.starts);
@@ -400,6 +459,8 @@ function normalizeStats(player, stats) {
 
 function normalizePlayer(player) {
   player.origin = player.origin || pick(ORIGINS);
+  player.isForeign = player.isForeign ?? (FOREIGN_ORIGINS.includes(player.origin) || player.nationality === "外国人");
+  player.nationality = player.nationality || (player.isForeign ? "外国人" : "国内");
   player.throwBat = player.throwBat || throwBatProfile(player.pos);
   if (!player.height || !player.weight) {
     const body = bodyProfile(player.pos);
@@ -437,6 +498,7 @@ function normalizePlayer(player) {
   player.pitchTypes = player.pitchTypes || (player.pos === "投" ? generatePitchTypes() : []);
   player.maxVelocity = player.maxVelocity || (player.pos === "投" ? clamp(rand(135, 154), 130, 160) : 0);
   player.fairSalary = player.fairSalary ?? fairMarketValue(player);
+  player.rosterRole = player.rosterRole || "未登録";
 
   return player;
 }
@@ -454,6 +516,19 @@ function buildBalancedRoster(teamId, count, bias, rookie = false) {
     roster.push(createPlayer(teamId, pitcherCount + i, bias, rookie, pos));
   }
   return roster;
+}
+
+function ensureRosterMinimum(team, target = ROSTER_TARGET) {
+  if (!state.rosters[team.id]) state.rosters[team.id] = [];
+  const bias = Math.round((team.power.hit + team.power.sp + team.power.rp + team.power.def + team.power.run) / 5 - 65) / 3;
+  while (state.rosters[team.id].length < target) {
+    const currentPitchers = state.rosters[team.id].filter((p) => p.pos === "投").length;
+    const needPitcher = currentPitchers < Math.round(target * 0.45);
+    const forcePos = needPitcher ? "投" : pick(POSITIONS.slice(1));
+    const player = createPlayer(team.id, state.year * 100 + state.rosters[team.id].length, bias - 4, true, forcePos);
+    player.acquired = "補充";
+    state.rosters[team.id].push(player);
+  }
 }
 
 function initGame(teamId) {
@@ -481,26 +556,26 @@ function initGame(teamId) {
   state.draftNominationBoard = null;
 
   state.freeAgents = generateFAMarket();
-  state.draftPool = Array.from({ length: rand(60, 80) }, (_, i) => createDraftCandidate(i, rand(-3, 5)));
+  teams.forEach((team) => ensureRosterMinimum(team));
+  state.draftPool = Array.from({ length: rand(110, 130) }, (_, i) => createDraftCandidate(i, rand(-3, 5)));
   state.released = [];
   state.history = [];
   state.news = [`${getTeam().name}の編成室が始動。${state.year}年オフの補強方針が問われます。`];
 
-  // Apply position rank stats to initial rosters
-  Object.values(state.rosters).forEach((roster) => {
-    const byPos = {};
-    roster.filter((p) => p.pos !== "投").forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
-    Object.values(byPos).forEach((group) => {
-      group.sort((a, b) => overall(b) - overall(a));
-      group.forEach((p, i) => {
-        const tg = i === 0 ? 120 + rand(-8, 8) : i === 1 ? 18 + rand(-5, 8) : clamp(rand(0, 3), 0, 5);
-        p.stats = generatePlayerStats(p, overall(p), 0, tg);
-        p.lastStats = formatStats(p.stats);
-        // Also update last career year
-        if (p.careerStats.length) {
-          p.careerStats[p.careerStats.length - 1].stats = p.stats;
-        }
-      });
+  // Apply previous-season first-team usage to initial rosters.
+  Object.entries(state.rosters).forEach(([teamIdForRoster, roster]) => {
+    const activeRoster = selectActiveRoster(teamIdForRoster);
+    const activeIds = new Set(activeRoster.map((p) => p.id));
+    const posRanks = calculateHitterRanks(activeRoster);
+    roster.forEach((p) => {
+      const isActive = activeIds.has(p.id);
+      p.rosterRole = isActive ? "一軍" : "二軍";
+      const tg = p.pos === "投" ? undefined : (posRanks[p.id] === 0 ? 120 + rand(-8, 8) : posRanks[p.id] === 1 ? 55 + rand(-12, 16) : posRanks[p.id] <= 4 ? 24 + rand(-8, 12) : clamp(rand(0, 3), 0, 5));
+      p.stats = isActive ? generatePlayerStats(p, overall(p), 0, tg) : noAppearanceStats(p);
+      p.lastStats = formatStats(p.stats);
+      if (p.careerStats.length) {
+        p.careerStats[p.careerStats.length - 1].stats = p.stats;
+      }
     });
   });
 
@@ -531,6 +606,16 @@ function canAddToRoster(teamId = state.selectedTeamId) {
   return rosterSlotsLeft(teamId) > 0;
 }
 
+function addPlayerToRoster(teamId, player, acquired = player.acquired || "在籍") {
+  if (!state.rosters[teamId]) state.rosters[teamId] = [];
+  if (!canAddToRoster(teamId)) return false;
+  player.teamId = teamId;
+  player.acquired = acquired;
+  normalizePlayer(player);
+  state.rosters[teamId].push(player);
+  return true;
+}
+
 function rosterSalary(roster = myRoster()) {
   return roster.reduce((sum, player) => sum + player.salary, 0);
 }
@@ -549,7 +634,10 @@ function teamStrength(teamId) {
   const sp = avg(starters.map(overall));
   const rp = avg(relievers.map(overall));
   const def = avg([...roster].sort((a, b) => overall(b) - overall(a)).slice(0, 18).map((p) => p.defense));
-  const depth = clamp(roster.length * 2.4 + avg(roster.map((p) => Math.max(0, p.potential - overall(p)))) * 0.3, 35, 95);
+  const sortedByOverall = [...roster].sort((a, b) => overall(b) - overall(a));
+  const benchCore = avg(sortedByOverall.slice(18, ACTIVE_ROSTER_MAX).map(overall));
+  const prospectMargin = avg(roster.map((p) => Math.max(0, p.potential - overall(p))));
+  const depth = clamp(benchCore * 0.78 + prospectMargin * 0.45 + Math.max(0, roster.length - 55) * 0.35, 35, 95);
   return {
     hit: Math.round(hit),
     sp: Math.round(sp),
@@ -563,6 +651,129 @@ function teamStrength(teamId) {
 function avg(values) {
   if (!values.length) return 42;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function selectActiveRoster(teamId) {
+  const roster = [...(state.rosters[teamId] || [])].sort((a, b) => overall(b) - overall(a));
+  const pitchers = roster.filter((p) => p.pos === "投");
+  const hitters = roster.filter((p) => p.pos !== "投");
+  const targetPitchers = Math.min(13, pitchers.length);
+  const targetHitters = Math.min(ACTIVE_ROSTER_MAX - targetPitchers, hitters.length);
+  const active = [];
+  let foreignCount = 0;
+
+  const tryAdd = (player) => {
+    if (!player || active.some((p) => p.id === player.id) || active.length >= ACTIVE_ROSTER_MAX) return false;
+    if (player.isForeign && foreignCount >= FOREIGN_ACTIVE_MAX) return false;
+    active.push(player);
+    if (player.isForeign) foreignCount++;
+    return true;
+  };
+
+  pitchers.slice(0, targetPitchers).forEach(tryAdd);
+  hitters.slice(0, targetHitters).forEach(tryAdd);
+  roster.forEach(tryAdd);
+  return active.slice(0, ACTIVE_ROSTER_MAX);
+}
+
+function activeRosterSummary(teamId = state.selectedTeamId) {
+  const active = selectActiveRoster(teamId);
+  return {
+    activeCount: active.length,
+    benchCount: Math.min(BENCH_ROSTER_MAX, active.length),
+    foreignCount: active.filter((p) => p.isForeign).length,
+  };
+}
+
+function calculateHitterRanks(activeRoster) {
+  const ranks = {};
+  const byPos = {};
+  activeRoster.filter((p) => p.pos !== "投").forEach((p) => {
+    if (!byPos[p.pos]) byPos[p.pos] = [];
+    byPos[p.pos].push(p);
+  });
+  Object.entries(byPos).forEach(([pos, group]) => {
+    group.sort((a, b) => overall(b) - overall(a));
+    group.forEach((p, i) => {
+      if (pos === "外" && i < 3) ranks[p.id] = 0;
+      else ranks[p.id] = i;
+    });
+  });
+  return ranks;
+}
+
+function buildSeasonRows() {
+  const rows = new Map();
+  const strengths = new Map();
+  teams.forEach((team) => {
+    const strength = teamStrength(team.id);
+    strengths.set(team.id, strength);
+    rows.set(team.id, { team, strength, wins: 0, losses: 0, ties: 0, games: 0, pct: 0 });
+  });
+
+  const playSeries = (teamA, teamB, games) => {
+    const rowA = rows.get(teamA.id);
+    const rowB = rows.get(teamB.id);
+    const sA = strengths.get(teamA.id).total;
+    const sB = strengths.get(teamB.id).total;
+    for (let i = 0; i < games; i++) {
+      rowA.games++;
+      rowB.games++;
+      if (rand(1, 100) <= 4) {
+        rowA.ties++;
+        rowB.ties++;
+        continue;
+      }
+      const winChanceA = clamp(50 + (sA - sB) * 1.25 + rand(-8, 8), 25, 75);
+      if (rand(1, 100) <= winChanceA) {
+        rowA.wins++;
+        rowB.losses++;
+      } else {
+        rowB.wins++;
+        rowA.losses++;
+      }
+    }
+  };
+
+  LEAGUES.forEach((league) => {
+    const leagueTeams = teams.filter((team) => team.league === league.id);
+    for (let i = 0; i < leagueTeams.length; i++) {
+      for (let j = i + 1; j < leagueTeams.length; j++) {
+        playSeries(leagueTeams[i], leagueTeams[j], INTRALEAGUE_GAMES_PER_OPPONENT);
+      }
+    }
+  });
+
+  const firstLeague = teams.filter((team) => team.league === LEAGUES[0].id);
+  const secondLeague = teams.filter((team) => team.league === LEAGUES[1].id);
+  firstLeague.forEach((teamA) => {
+    secondLeague.forEach((teamB) => playSeries(teamA, teamB, INTERLEAGUE_GAMES_PER_OPPONENT));
+  });
+
+  return teams.map((team) => {
+    const row = rows.get(team.id);
+    row.pct = row.wins / Math.max(1, row.wins + row.losses);
+    return row;
+  });
+}
+
+function aggregateTeamSeasonStats(row, rank, teamId) {
+  const roster = state.rosters[teamId] || [];
+  const hitters = roster.filter((p) => p.stats?.kind === "hitter");
+  const pitchers = roster.filter((p) => p.stats?.kind === "pitcher");
+  const rbi = hitters.reduce((sum, p) => sum + (p.stats.rbi || 0), 0);
+  const homers = hitters.reduce((sum, p) => sum + (p.stats.homers || 0), 0);
+  const steals = hitters.reduce((sum, p) => sum + (p.stats.stolenBases || 0), 0);
+  const runs = clamp(Math.round(rbi * 1.06 + homers * 0.18 + steals * 0.08), 280, 900);
+  const innings = pitchers.reduce((sum, p) => sum + (p.stats.innings || 0), 0);
+  const earnedRuns = pitchers.reduce((sum, p) => sum + ((p.stats.era || 0) * (p.stats.innings || 0) / 9), 0);
+  const era = innings > 0 ? clamp(earnedRuns * 9 / innings, 1.5, 6.8) : 0;
+  const allowed = clamp(Math.round(earnedRuns * 1.08 + pitchers.reduce((sum, p) => sum + (p.stats.walks || 0), 0) * 0.06), 250, 900);
+  const payroll = rosterSalary(roster);
+  const previous = state.history[state.history.length - 1];
+  const rankDelta = previous ? previous.rank - rank : 0;
+  const fanSatisfaction = clamp(Math.round(35 + (7 - rank) * 6 + (row.pct - 0.5) * 80 + rankDelta * 4), 12, 99);
+  return { runs, allowed, era, payroll, fanSatisfaction, rankDelta, total: row.strength.total };
 }
 
 function persist() {
@@ -623,6 +834,15 @@ function loadSavedState() {
     Object.values(state.rosters).forEach((roster) => roster.forEach(normalizePlayer));
     state.freeAgents.forEach(normalizePlayer);
     state.draftPool.forEach(normalizePlayer);
+    teams.forEach((team) => {
+      if (!state.rosters[team.id]) state.rosters[team.id] = [];
+      const bias = Math.round((team.power.hit + team.power.sp + team.power.rp + team.power.def + team.power.run) / 5 - 65) / 3;
+      while (state.rosters[team.id].length < ROSTER_TARGET) {
+        const currentPitchers = state.rosters[team.id].filter((p) => p.pos === "投").length;
+        const needPitcher = currentPitchers < Math.round(ROSTER_TARGET * 0.45);
+        state.rosters[team.id].push(createPlayer(team.id, state.year * 100 + state.rosters[team.id].length, bias - 4, true, needPitcher ? "投" : pick(POSITIONS.slice(1))));
+      }
+    });
 
     // Recalculate fair salaries for existing saves (after formula updates)
     if (!saved._fairSalaryVersion) {
@@ -782,6 +1002,10 @@ function signFreeAgent(id) {
   if (state.phase !== "offseason") return;
   const player = state.freeAgents.find((item) => item.id === id);
   if (!player || budgetLeft() < player.demandSalary) return;
+  if (!canAddToRoster() && !(player.faRank === "A" || player.faRank === "B")) {
+    alert("支配下登録上限(70人)に達しているため、先に戦力外などで枠を空けてください。");
+    return;
+  }
 
   const chance = clamp(60 + budgetLeft() * 2.5 + (getTeam().budget - 45) * 0.5, 25, 95);
   const success = rand(1, 100) <= chance;
@@ -813,11 +1037,17 @@ function signFreeAgent(id) {
         const rate = player.faRank === "A" ? 0.8 : 0.6;
         const fee = player.salary * rate;
         // Pay money only
-        state.rosters[state.selectedTeamId].push(player);
+        if (!addPlayerToRoster(state.selectedTeamId, player, "FA")) {
+          alert("支配下登録上限(70人)を超えるためFA獲得を完了できません。");
+          return;
+        }
         state.news.unshift(`${player.name}をFA獲得（補償金${money(fee)}を支払）。`);
       }
     } else {
-      state.rosters[state.selectedTeamId].push(player);
+      if (!addPlayerToRoster(state.selectedTeamId, player, "FA")) {
+        alert("支配下登録上限(70人)を超えるためFA獲得を完了できません。");
+        return;
+      }
       state.news.unshift(`${player.name}をFA獲得（Cランクのため補償なし）。`);
     }
   } else {
@@ -846,13 +1076,24 @@ function confirmProtectList() {
   // Remove chosen player from my roster
   if (chosenPlayer) {
     state.rosters[state.selectedTeamId] = myRoster().filter((p) => p.id !== chosenPlayer.id);
-    chosenPlayer.teamId = formerTeamId;
-    chosenPlayer.acquired = "人的補償";
-    state.rosters[formerTeamId].push(chosenPlayer);
+    if (!addPlayerToRoster(formerTeamId, chosenPlayer, "人的補償")) {
+      state.rosters[state.selectedTeamId].push(chosenPlayer);
+      alert("旧所属球団の支配下枠が不足しているため、人的補償を完了できません。");
+      return;
+    }
   }
 
   // Add signed FA to my roster
-  state.rosters[state.selectedTeamId].push(faPlayer);
+  if (!addPlayerToRoster(state.selectedTeamId, faPlayer, "FA")) {
+    if (chosenPlayer) {
+      state.rosters[formerTeamId] = (state.rosters[formerTeamId] || []).filter((p) => p.id !== chosenPlayer.id);
+      chosenPlayer.teamId = state.selectedTeamId;
+      chosenPlayer.acquired = "在籍";
+      state.rosters[state.selectedTeamId].push(chosenPlayer);
+    }
+    alert("支配下登録上限(70人)を超えるためFA獲得を完了できません。");
+    return;
+  }
 
   const rate = rank === "A" ? 0.5 : 0.4;
   const fee = faPlayer.salary * rate;
@@ -949,10 +1190,10 @@ function isActiveDraftEligible(player) {
   const isPitcher = player.pos === "投";
   const games = player.stats?.games || 0;
   return (
-    player.teamId === state.selectedTeamId &&
     !player.faEligible &&
+    !player.isForeign &&
     player.age >= 22 &&
-    player.salary <= 1.0 &&
+    player.salary <= 5.0 &&
     (isPitcher ? games <= 15 : games <= 40)
   );
 }
@@ -978,13 +1219,9 @@ function nominateForActiveDraft(nominatedIds) {
   teams.forEach((t) => {
     if (t.id === state.selectedTeamId) return;
     const roster = state.rosters[t.id] || [];
-    let eligible = roster.filter((p) => {
-      const isPitcher = p.pos === "投";
-      const games = p.stats?.games || 0;
-      return !p.faEligible && p.age >= 22 && p.salary <= 1.2 && (isPitcher ? games <= 18 : games <= 45);
-    });
+    let eligible = roster.filter(isActiveDraftEligible);
     if (eligible.length < 2) {
-      eligible = roster.filter((p) => !p.faEligible && p.age >= 21 && p.salary <= 2.0);
+      eligible = roster.filter((p) => !p.faEligible && !p.isForeign && p.age >= 21 && p.salary <= 5.0);
     }
     // Select 2 lowest overall players to nominate
     eligible.sort((a, b) => overall(a) - overall(b));
@@ -1009,6 +1246,10 @@ function simulateActiveDraft(playerPickId) {
   const selectors = new Set(teams.map((t) => t.id));
 
   const playerPick = allNominees.find((p) => p.id === playerPickId);
+  if (!playerPick) {
+    alert("指名対象の選手が見つかりません。");
+    return;
+  }
   picks[state.selectedTeamId] = playerPick;
   takenFrom.add(playerPick.originalTeamId);
   selectors.delete(state.selectedTeamId);
@@ -1035,17 +1276,19 @@ function simulateActiveDraft(playerPickId) {
     currentSelector = chosen.originalTeamId;
   }
 
-  // Apply roster changes
+  // Apply roster changes: release all outgoing players before adding incoming players.
   results.forEach((res) => {
     state.rosters[res.from] = state.rosters[res.from].filter((p) => p.id !== res.player.id);
-    res.player.teamId = res.to;
-    res.player.acquired = "現役D";
-    state.rosters[res.to].push(res.player);
+  });
+  results.forEach((res) => {
+    if (!addPlayerToRoster(res.to, res.player, "現役D")) {
+      state.news.unshift(`${teamName(res.to)}は支配下枠が不足したため、${res.player.name}の現役ドラフト獲得を見送りました。`);
+    }
   });
 
   state.activeDraftResult = results;
   state.activeDraftPhase = "done";
-  state.news.unshift(`現役ドラフト開催。自球団は${playerPick.name}を獲得、人的補償として${results.find((r) => r.from === state.selectedTeamId)?.player.name || "選手"}を放出しました。`);
+  state.news.unshift(`現役ドラフト開催。自球団は${playerPick.name}を獲得し、${results.find((r) => r.from === state.selectedTeamId)?.player.name || "選手"}が移籍しました。`);
   persist();
   render();
 }
@@ -1154,6 +1397,8 @@ function createDraftCandidate(index, bias) {
     pos,
     age,
     origin: pick(ORIGINS),
+    nationality: "国内",
+    isForeign: false,
     throwBat: throwBatProfile(pos),
     height: body.height,
     weight: body.weight,
@@ -1198,14 +1443,18 @@ function createDraftCandidate(index, bias) {
 
 function startDraft() {
   if (state.draftRound > 0) return;
+  if (!canAddToRoster(state.selectedTeamId)) {
+    alert("支配下登録上限(70人)に達しているため、ドラフト前に枠を空けてください。");
+    return;
+  }
   state.draftRound = 1;
   state.draftResults = [];
   
   // Define Round 1 order (simultaneous pick + lottery logic)
   let waiverOrder = teams.map((t) => t.id);
-  if (state.results) {
-    const sorted = [...state.results.rows].sort((a, b) => a.wins - b.wins);
-    waiverOrder = sorted.map((r) => r.team.id);
+  if (state.lastSeasonStandings) {
+    const sorted = state.lastSeasonStandings.flatMap((lg) => lg.rows).sort((a, b) => a.wins - b.wins).map((r) => r.team.id);
+    waiverOrder = sorted;
   }
   state.draftOrder = waiverOrder;
   persist();
@@ -1274,9 +1523,9 @@ function simulateCPUDraftRound1(playerNominee) {
   }
 
   roundResults.forEach((res) => {
-    state.draftResults.push({ round: 1, teamId: res.teamId, player: res.player });
-    res.player.teamId = res.teamId;
-    state.rosters[res.teamId].push(res.player);
+    if (addPlayerToRoster(res.teamId, res.player, "ドラフト")) {
+      state.draftResults.push({ round: 1, teamId: res.teamId, player: res.player });
+    }
   });
 
   state.draftRound = 2;
@@ -1286,6 +1535,11 @@ function simulateCPUDraftRound1(playerNominee) {
 
 function pickDraftCandidate(id) {
   if (state.draftRound === 0) return;
+  if (!canAddToRoster(state.selectedTeamId)) {
+    alert("支配下登録上限(70人)に達しているため、これ以上指名できません。");
+    endDraftEarly();
+    return;
+  }
   const player = state.draftPool.find((item) => item.id === id);
   if (!player) return;
 
@@ -1314,23 +1568,24 @@ function pickDraftCandidate(id) {
 
   roundOrder.forEach((tid) => {
     if (tid === state.selectedTeamId) {
+      if (!addPlayerToRoster(state.selectedTeamId, player, "ドラフト")) {
+        alert("支配下登録上限(70人)に達しているため、指名できません。");
+        return;
+      }
       state.draftPool = state.draftPool.filter((item) => item.id !== id);
-      player.teamId = state.selectedTeamId;
-      state.rosters[state.selectedTeamId].push(player);
       state.draftResults.push({ round, teamId: state.selectedTeamId, player });
     } else {
       const candidates = [...state.draftPool].sort((a, b) => overall(b) - overall(a));
       const chosen = candidates[0];
-      if (chosen) {
+      if (chosen && canAddToRoster(tid)) {
         state.draftPool = state.draftPool.filter((item) => item.id !== chosen.id);
-        chosen.teamId = tid;
-        state.rosters[tid].push(chosen);
+        addPlayerToRoster(tid, chosen, "ドラフト");
         state.draftResults.push({ round, teamId: tid, player: chosen });
       }
     }
   });
 
-  if (state.draftRound < DRAFT_MAX_ROUNDS) {
+  if (state.draftRound < DRAFT_MAX_ROUNDS && state.draftResults.length < DRAFT_MAX_TOTAL_PICKS && state.draftPool.length) {
     state.draftRound += 1;
   } else {
     state.draftRound = 0; 
@@ -1405,14 +1660,15 @@ function sortHeader(label, key) {
 }
 
 function teamSeasonStats(row, rank, teamId = state.selectedTeamId) {
+  if (row.teamStats) return row.teamStats;
   const strength = teamStrength(teamId);
   const runs = clamp(Math.round(410 + strength.hit * 3.1 + strength.depth * 1.2 + rand(-24, 28)), 420, 820);
   const allowed = clamp(Math.round(820 - strength.sp * 2.4 - strength.rp * 1.8 - strength.def * 1.1 + rand(-22, 26)), 390, 760);
-  const era = clamp(allowed / 143 / 1.08, 2.55, 5.2);
+  const era = clamp(allowed / GAMES_PER_TEAM / 1.08, 2.55, 5.2);
   const payroll = rosterSalary(state.rosters[teamId] || []);
   const previous = state.history[state.history.length - 1];
   const rankDelta = previous ? previous.rank - rank : 0;
-  const fanSatisfaction = clamp(Math.round(38 + (13 - rank) * 4.4 + (row.wins - 70) * 0.45 + rankDelta * 4), 12, 99);
+  const fanSatisfaction = clamp(Math.round(38 + (7 - rank) * 5.5 + ((row.pct || row.wins / GAMES_PER_TEAM) - 0.5) * 70 + rankDelta * 4), 12, 99);
   return {
     runs,
     allowed,
@@ -1440,7 +1696,7 @@ function seasonLeaders(roster) {
     }));
 }
 
-function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
+function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0, forcedStats = null) {
   const rating = overall(player);
   // Calculate target games by position rank (per-team cap)
   let targetGames;
@@ -1449,11 +1705,15 @@ function ageAndUpdatePlayer(player, teamBoost, teamId, posRank = 0) {
   } else if (posRank === 0) {
     targetGames = 120 + rand(-8, 8);
   } else if (posRank === 1) {
-    targetGames = 18 + rand(-5, 8);
+    targetGames = 55 + rand(-12, 16);
+  } else if (posRank <= 4) {
+    targetGames = 24 + rand(-8, 12);
+  } else if (posRank <= 8) {
+    targetGames = 8 + rand(-4, 8);
   } else {
     targetGames = clamp(rand(0, 3), 0, 5);
   }
-  player.stats = generatePlayerStats(player, rating, teamBoost, targetGames);
+  player.stats = forcedStats || generatePlayerStats(player, rating, teamBoost, targetGames);
   player.lastStats = formatStats(player.stats);
   player.careerStats = Array.isArray(player.careerStats) ? player.careerStats : [];
   player.careerStats.push({
@@ -1496,7 +1756,7 @@ function leagueStandings(rows) {
     ...league,
     rows: rows
       .filter((row) => row.team.league === league.id)
-      .sort((a, b) => b.wins - a.wins || b.strength.total - a.strength.total)
+      .sort((a, b) => b.pct - a.pct || b.wins - a.wins || b.strength.total - a.strength.total)
       .map((row, index) => ({ ...row, leagueRank: index + 1 })),
   }));
 }
@@ -1529,13 +1789,7 @@ function simulateSeason() {
       state.draftOrder = [];
     }
 
-  const baseRows = teams.map((team) => {
-    const strength = teamStrength(team.id);
-    const variance = rand(-10, 10) + (strength.depth < 58 ? rand(-8, 4) : 0);
-    const winRate = clamp(0.32 + (strength.total + variance - 45) / 115, 0.28, 0.72);
-    const wins = clamp(Math.round(143 * winRate), 38, 99);
-    return { team, strength, wins, losses: 143 - wins };
-  });
+  const baseRows = buildSeasonRows();
   const leagueRows = leagueStandings(baseRows);
   const rows = leagueRows.flatMap((league) => league.rows);
 
@@ -1543,28 +1797,28 @@ function simulateSeason() {
     const row = rows.find((item) => item.team.id === team.id);
     const teamBoost = row ? (row.strength.total - 62) / 2 : 0;
     const roster = state.rosters[team.id] || [];
+    const activeRoster = selectActiveRoster(team.id);
+    const activeIds = new Set(activeRoster.map((p) => p.id));
 
-    // Calculate position depth ranks
-    const posRanks = {};
-    const hitters = roster.filter((p) => p.pos !== "投");
-    const byPos = {};
-    hitters.forEach((p) => { if (!byPos[p.pos]) byPos[p.pos] = []; byPos[p.pos].push(p); });
-    Object.values(byPos).forEach((group) => {
-      group.sort((a, b) => overall(b) - overall(a));
-      group.forEach((p, i) => { posRanks[p.id] = i; });
-    });
+    const posRanks = calculateHitterRanks(activeRoster);
 
     roster.forEach((player) => {
-      const posRank = posRanks[player.id] ?? 0;
-      ageAndUpdatePlayer(player, teamBoost, team.id, posRank);
+      const isActive = activeIds.has(player.id);
+      player.rosterRole = isActive ? "一軍" : "二軍";
+      const posRank = posRanks[player.id] ?? 99;
+      ageAndUpdatePlayer(player, teamBoost, team.id, posRank, isActive ? null : noAppearanceStats(player));
     });
+  });
+
+  rows.forEach((row) => {
+    row.teamStats = aggregateTeamSeasonStats(row, row.leagueRank, row.team.id);
   });
 
   const roster = myRoster();
   const mine = rows.find((row) => row.team.id === state.selectedTeamId);
   const rank = mine.leagueRank;
   const bestPlayer = [...roster].sort((a, b) => overall(b) - overall(a))[0];
-  const teamStats = teamSeasonStats(mine, rank, state.selectedTeamId);
+  const teamStats = mine.teamStats || teamSeasonStats(mine, rank, state.selectedTeamId);
   const leaders = seasonLeaders(roster);
   const comments = [
     rank <= 2 ? "大型補強が順位に直結。編成部の評価は急上昇です。" : "補強効果は限定的。来冬は弱点をさらに絞る必要があります。",
@@ -1573,7 +1827,8 @@ function simulateSeason() {
     bestPlayer ? `${bestPlayer.name}が中心選手として存在感を示しました。` : "主力不在の苦しいシーズンでした。",
   ];
   state.results = { year: state.year, rows, leagueRows, rank, mine, comments, teamStats, leaders };
-  state.history.push({ year: state.year, rank, wins: mine.wins, losses: mine.losses, fanSatisfaction: teamStats.fanSatisfaction });
+  state.lastSeasonStandings = leagueRows;
+  state.history.push({ year: state.year, rank, wins: mine.wins, losses: mine.losses, ties: mine.ties, pct: mine.pct, fanSatisfaction: teamStats.fanSatisfaction });
   state.news = comments.concat(state.news).slice(0, 12);
   state.phase = "result";
   persist();
@@ -1633,7 +1888,8 @@ function advanceToNextYear() {
   state.draftNominationBoard = null;
 
   state.freeAgents = generateFAMarket();
-  state.draftPool = Array.from({ length: rand(60, 80) }, (_, i) => createDraftCandidate(i, rand(-3, 5)));
+  teams.forEach((team) => ensureRosterMinimum(team));
+  state.draftPool = Array.from({ length: rand(110, 130) }, (_, i) => createDraftCandidate(i, rand(-3, 5)));
 
   const retireNews = retired.length ? `${retired.slice(0, 3).map((player) => player.name).join("、")}が現役を退きました。` : "大きな引退報道はなく、静かな市場入りです。";
   state.news = [
@@ -1712,6 +1968,7 @@ function renderStatusStrip(strength) {
   const team = getTeam();
   const budget = budgetLeft();
   const players = myRoster().length;
+  const active = activeRosterSummary();
   return `
     <div class="status-strip">
       <div class="status-box">
@@ -1725,6 +1982,14 @@ function renderStatusStrip(strength) {
       <div class="status-box">
         <div class="status-label">支配下人数</div>
         <div class="status-value">${players} / ${ROSTER_MAX}人</div>
+      </div>
+      <div class="status-box">
+        <div class="status-label">一軍 / ベンチ</div>
+        <div class="status-value">${active.activeCount}/${ACTIVE_ROSTER_MAX}・${active.benchCount}/${BENCH_ROSTER_MAX}</div>
+      </div>
+      <div class="status-box">
+        <div class="status-label">外国人枠</div>
+        <div class="status-value">${active.foreignCount} / ${FOREIGN_ACTIVE_MAX}人</div>
       </div>
       <div class="status-box">
         <div class="status-label">総合力</div>
@@ -1903,7 +2168,7 @@ function renderLeaguePanel() {
             <tbody>
               ${roster.map((player) => `
                 <tr>
-                  <td>${renderPlayerButton(player)} <span class="tag">${player.acquired}</span></td>
+                  <td>${renderPlayerButton(player)} ${renderPlayerTags(player)}</td>
                   <td>${player.pos}</td>
                   <td>${player.age}</td>
                   <td>${player.height}cm / ${player.weight}kg</td>
@@ -1977,7 +2242,7 @@ function renderRosterPanel(title, tradeMode) {
             <tbody>
               ${roster.map((player) => `
                 <tr>
-                  <td>${renderPlayerButton(player)} <span class="tag">${player.acquired}</span></td>
+                  <td>${renderPlayerButton(player)} ${renderPlayerTags(player)}</td>
                   <td>${player.pos}</td>
                   <td>${player.age}</td>
                   <td>${player.height}cm / ${player.weight}kg</td>
@@ -2156,7 +2421,7 @@ function renderDraftPanel() {
       <section class="panel">
         <div class="panel-header">
           <h2 class="panel-title">新人選手選択会議 (ドラフト)</h2>
-          <p class="panel-sub">今季の新人ドラフト会議を開始します。最大7巡まで指名を行います。</p>
+          <p class="panel-sub">今季の新人ドラフト会議を開始します。支配下枠がある球団のみ、最大${DRAFT_MAX_ROUNDS}巡・全球団合計${DRAFT_MAX_TOTAL_PICKS}名まで指名できます。</p>
         </div>
         <div class="panel-body">
           <button class="primary-button" data-start-draft>ドラフト会議を開始する</button>
@@ -2177,7 +2442,7 @@ function renderDraftPanel() {
     `;
   }
 
-  const roundText = state.draftRound === 1 ? "1巡目 (重複抽選あり)" : `${state.draftRound}巡目 (ウェーバー順)`;
+  const roundText = state.draftRound === 1 ? "1巡目 (重複抽選あり)" : `${state.draftRound}巡目 (ウェーバー順 / 最大${DRAFT_MAX_ROUNDS}巡)`;
   return `
     <section class="panel">
       <div class="panel-header">
@@ -2185,7 +2450,7 @@ function renderDraftPanel() {
           <span class="round-label">ドラフト会議 - ${roundText}</span>
           <span class="tag gold">プール残数: ${state.draftPool.length}名</span>
         </div>
-        <p class="panel-sub">獲得したい選手を指名してください。高校・大学・社会人それぞれのスカウトレポート、特徴が確認できます。</p>
+        <p class="panel-sub">獲得したい選手を指名してください。支配下登録上限に達すると指名を終了します。</p>
       </div>
       <div class="panel-body draft-grid">
         ${state.draftRound > 1 ? `
@@ -2353,6 +2618,17 @@ function renderActiveDraftPanel() {
 
 function renderPlayerButton(player) {
   return `<button class="player-link" data-player-detail="${player.id}">${player.name}</button>`;
+}
+
+function displayRosterRole(player) {
+  if (!teams.some((team) => team.id === player.teamId)) return player.rosterRole || "未登録";
+  return selectActiveRoster(player.teamId).some((p) => p.id === player.id) ? "一軍" : "二軍";
+}
+
+function renderPlayerTags(player) {
+  const tags = [player.acquired, displayRosterRole(player)];
+  if (player.isForeign) tags.push("外国人");
+  return tags.filter(Boolean).map((tag) => `<span class="tag">${tag}</span>`).join(" ");
 }
 
 function renderRecordsPanel() {
@@ -2543,7 +2819,7 @@ function renderPlayerDetail() {
         <div class="modal-head">
           <div>
             <h2>${player.name}</h2>
-            <p class="panel-sub">${currentTeam} / ${player.pos} / ${player.throwBat} / ${player.originType || "高卒"}</p>
+            <p class="panel-sub">${currentTeam} / ${player.pos} / ${player.throwBat} / ${player.originType || "高卒"} / ${player.nationality || "国内"} / ${displayRosterRole(player)}</p>
           </div>
           <button class="close-button" data-close-detail>×</button>
         </div>
@@ -2551,6 +2827,8 @@ function renderPlayerDetail() {
           <div class="profile-grid">
             <div><span>年齢</span><strong>${player.age}歳</strong></div>
             <div><span>出身</span><strong>${player.origin}</strong></div>
+            <div><span>区分</span><strong>${player.nationality || "国内"}</strong></div>
+            <div><span>登録</span><strong>${displayRosterRole(player)}</strong></div>
             <div><span>身長</span><strong>${player.height}cm</strong></div>
             <div><span>体重</span><strong>${player.weight}kg</strong></div>
             <div><span>年俸</span><strong>${money(player.salary)}</strong></div>
@@ -2698,8 +2976,6 @@ function submitFAOffer() {
   const success = offerValue >= threshold;
 
   if (success) {
-    state.freeAgents = state.freeAgents.filter((p) => p.id !== player.id);
-    player.teamId = state.selectedTeamId;
     player.salary = offeredSalary;
     player.fairSalary = fairMarketValue(player);
     player.years = offeredYears;
@@ -2709,6 +2985,8 @@ function submitFAOffer() {
       const decideRoll = Math.random() * 100;
       const isHumanComp = decideRoll <= 70;
       if (isHumanComp) {
+        state.freeAgents = state.freeAgents.filter((p) => p.id !== player.id);
+        player.teamId = state.selectedTeamId;
         state.protectPhase = {
           faPlayer: player,
           formerTeamId: player.formerTeamId,
@@ -2719,12 +2997,20 @@ function submitFAOffer() {
         state.protectList = myPlrs.slice(0, Math.min(myPlrs.length, PROTECT_LIST_SIZE)).map((p) => p.id);
         state.news.unshift(`${player.name}と${isRetain ? '残留' : '獲得'}で合意。人的補償のプロテクトリスト編成が必要です。`);
       } else {
-        state.rosters[state.selectedTeamId].push(player);
+        if (!addPlayerToRoster(state.selectedTeamId, player, "FA")) {
+          alert("支配下登録上限(70人)に達しているため、先に枠を空けてください。");
+          return;
+        }
+        state.freeAgents = state.freeAgents.filter((p) => p.id !== player.id);
         const fee = player.salary * (player.faRank === "A" ? 0.8 : 0.6);
         state.news.unshift(`${player.name}を${isRetain ? '引き留め成功（残留）' : 'FA獲得'}。補償金${money(fee)}を支払いました。`);
       }
     } else {
-      state.rosters[state.selectedTeamId].push(player);
+      if (!addPlayerToRoster(state.selectedTeamId, player, isRetain ? "FA残留" : "FA")) {
+        alert("支配下登録上限(70人)に達しているため、先に枠を空けてください。");
+        return;
+      }
+      state.freeAgents = state.freeAgents.filter((p) => p.id !== player.id);
       state.news.unshift(`${player.name}を${isRetain ? '引き留めに成功！残留が決定' : 'FA獲得'}しました。（${offeredYears}年 ${money(offeredSalary)}）`);
     }
   } else {
@@ -2733,11 +3019,12 @@ function submitFAOffer() {
       // Player leaves to another team
       const cpuTeam = teams.filter((t) => t.id !== state.selectedTeamId)[Math.floor(Math.random() * 11)];
       if (cpuTeam) {
-        player.teamId = cpuTeam.id;
         player.acquired = "FA移籍";
         player.salary = player.demandSalary;
         player.years = Math.floor(Math.random() * 3) + 2;
-        state.rosters[cpuTeam.id].push(player);
+        if (addPlayerToRoster(cpuTeam.id, player, "FA移籍")) {
+          state.freeAgents = state.freeAgents.filter((p) => p.id !== player.id);
+        }
       }
     }
   }
@@ -2838,6 +3125,10 @@ function renderDraftBoard() {
 function runDraftLottery() {
   const board = state.draftNominationBoard;
   if (!board) return;
+  if (!canAddToRoster(state.selectedTeamId)) {
+    alert("支配下登録上限(70人)に達しているため、1巡目指名を完了できません。");
+    return;
+  }
 
   const allPicks = {};
   const addPick = (teamId, teamName, playerId, playerName, playerPos) => {
@@ -2857,11 +3148,10 @@ function runDraftLottery() {
     if (entry.teams.length === 1) {
       const winner = entry.teams[0];
       const player = state.draftPool.find((p) => p.id === pid);
-      if (player && !assignedPlayers.has(pid)) {
+      if (player && !assignedPlayers.has(pid) && canAddToRoster(winner.teamId)) {
         assignedPlayers.add(pid);
         state.draftPool = state.draftPool.filter((p) => p.id !== pid);
-        player.teamId = winner.teamId;
-        state.rosters[winner.teamId].push(player);
+        addPlayerToRoster(winner.teamId, player, "ドラフト");
         state.draftResults.push({ round: 1, teamId: winner.teamId, player });
         results.push({ playerName: entry.playerName, playerPos: entry.playerPos, winnerName: winner.teamName, losers: [] });
       }
@@ -2870,11 +3160,10 @@ function runDraftLottery() {
       const winner = entry.teams[winnerIdx];
       const losers = entry.teams.filter((_, i) => i !== winnerIdx);
       const player = state.draftPool.find((p) => p.id === pid);
-      if (player && !assignedPlayers.has(pid)) {
+      if (player && !assignedPlayers.has(pid) && canAddToRoster(winner.teamId)) {
         assignedPlayers.add(pid);
         state.draftPool = state.draftPool.filter((p) => p.id !== pid);
-        player.teamId = winner.teamId;
-        state.rosters[winner.teamId].push(player);
+        addPlayerToRoster(winner.teamId, player, "ドラフト");
         state.draftResults.push({ round: 1, teamId: winner.teamId, player });
         results.push({ playerName: entry.playerName, playerPos: entry.playerPos, winnerName: winner.teamName, losers });
         // Check if user lost this lottery
@@ -2911,12 +3200,11 @@ function runDraftLottery() {
     losingTeams.forEach((t) => {
       if (t.teamId === state.selectedTeamId) return;
       const candidates = [...state.draftPool].sort((a, b) => overall(b) - overall(a));
-      if (candidates.length > 0) {
+      if (candidates.length > 0 && canAddToRoster(t.teamId)) {
         const chosen = candidates[rand(0, Math.min(2, candidates.length - 1))];
         if (chosen) {
           state.draftPool = state.draftPool.filter((p) => p.id !== chosen.id);
-          chosen.teamId = t.teamId;
-          state.rosters[t.teamId].push(chosen);
+          addPlayerToRoster(t.teamId, chosen, "ドラフト");
           state.draftResults.push({ round: 1, teamId: t.teamId, player: chosen });
         }
       }
@@ -2932,12 +3220,15 @@ function runDraftLottery() {
 function rePickDraftCandidate(playerId) {
   const board = state.draftNominationBoard;
   if (!board || board.phase !== "repick") return;
+  if (!canAddToRoster(state.selectedTeamId)) {
+    alert("支配下登録上限(70人)に達しているため、再指名できません。");
+    return;
+  }
   const player = state.draftPool.find((p) => p.id === playerId);
   if (!player) return;
 
   state.draftPool = state.draftPool.filter((p) => p.id !== playerId);
-  player.teamId = state.selectedTeamId;
-  state.rosters[state.selectedTeamId].push(player);
+  addPlayerToRoster(state.selectedTeamId, player, "ドラフト");
   state.draftResults.push({ round: 1, teamId: state.selectedTeamId, player });
   state.news.unshift(`ドラフト1巡目: 抽選外れ → ${player.name}を再指名で獲得`);
 
@@ -2948,12 +3239,11 @@ function rePickDraftCandidate(playerId) {
   });
   losingTeams.forEach((t) => {
     const candidates = [...state.draftPool].sort((a, b) => overall(b) - overall(a));
-    if (candidates.length > 0) {
+    if (candidates.length > 0 && canAddToRoster(t.teamId)) {
       const chosen = candidates[rand(0, Math.min(2, candidates.length - 1))];
       if (chosen) {
         state.draftPool = state.draftPool.filter((p) => p.id !== chosen.id);
-        chosen.teamId = t.teamId;
-        state.rosters[t.teamId].push(chosen);
+        addPlayerToRoster(t.teamId, chosen, "ドラフト");
         state.draftResults.push({ round: 1, teamId: t.teamId, player: chosen });
       }
     }
@@ -2978,7 +3268,7 @@ function renderResults() {
   return `
     <div class="result-list" style="margin-top:14px">
       <div class="result-item">
-        <strong>${getTeam().name}: ${state.results.mine.wins}勝${state.results.mine.losses}敗 / ${leagueName(getTeam().league)} ${state.results.rank}位</strong>
+        <strong>${getTeam().name}: ${state.results.mine.wins}勝${state.results.mine.losses}敗${state.results.mine.ties || 0}分 勝率${formatRate(state.results.mine.pct)} / ${leagueName(getTeam().league)} ${state.results.rank}位</strong>
         <div class="fine muted">${rankDelta} / ファン満足度 ${stats.fanSatisfaction}</div>
       </div>
       <div class="result-grid">
@@ -2995,7 +3285,7 @@ function renderResults() {
               <div class="standing-row ${row.team.id === state.selectedTeamId ? "mine" : ""}">
                 <strong>${row.leagueRank}</strong>
                 <span>${row.team.name}</span>
-                <span>${row.wins}勝</span>
+                <span>${row.wins}勝${row.losses}敗${row.ties || 0}分 ${formatRate(row.pct)}</span>
               </div>
             `).join("")}
           </div>
